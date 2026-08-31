@@ -427,14 +427,14 @@ void GamePadRestart() {
 }
 
 static int update_button(int new_state, int old_state) {
-	if (new_state == GAMEPAD_BUTTON_STATE_HELD) {
-		if (old_state == GAMEPAD_BUTTON_STATE_NEUTRAL)
-			return GAMEPAD_BUTTON_STATE_DOWN;
-		return GAMEPAD_BUTTON_STATE_HELD;
+	if (new_state) {
+		if (old_state <= 0)
+			return GAMEPAD_BUTTON_STATE_DOWN; // 2 (just pressed)
+		return GAMEPAD_BUTTON_STATE_HELD; // 1 (held)
 	} else {
-		if (old_state == GAMEPAD_BUTTON_STATE_HELD)
-			return GAMEPAD_BUTTON_STATE_UP;
-		return GAMEPAD_BUTTON_STATE_NEUTRAL;
+		if (old_state > 0)
+			return GAMEPAD_BUTTON_STATE_UP; // -1 (just released)
+		return GAMEPAD_BUTTON_STATE_NEUTRAL; // 0 (neutral)
 	}
 }
 
@@ -625,11 +625,76 @@ void map_analog(int idx, const char *val) {
 	}
 }
 
-static void keyboard_check_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
-	int key = (int)args[0].rvalue.val;
-	if (key == 'C')
-		args[0].rvalue.val = 79.0f; // 'O' key
-	CheckKeyPressed(ret, self, other, argc, args);
+static void gh_keyboard_check(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	ret->kind = VALUE_REAL;
+	int k = get_rvalue_int(args, 0);
+	if (k == 32) { ret->rvalue.val = (yoyo_gamepads[0].buttons[0] > 0) ? 1.0f : 0.0f; return; } // Space -> Cross
+	if (k == 13) { ret->rvalue.val = (yoyo_gamepads[0].buttons[0] > 0 || yoyo_gamepads[0].buttons[9] > 0) ? 1.0f : 0.0f; return; } // Enter -> Cross / Start
+	if (k == 82) { ret->rvalue.val = (yoyo_gamepads[0].buttons[2] > 0) ? 1.0f : 0.0f; return; } // 'R' -> Square
+	if (k == 16 || k == 17 || k == 160) { ret->rvalue.val = (yoyo_gamepads[0].buttons[1] > 0 || yoyo_gamepads[0].buttons[6] > 0) ? 1.0f : 0.0f; return; } // Shift/Ctrl -> Circle / L Bumper
+	if (k == 27) { ret->rvalue.val = (yoyo_gamepads[0].buttons[9] > 0 || yoyo_gamepads[0].buttons[1] > 0) ? 1.0f : 0.0f; return; } // Escape -> Start / Circle
+	if (k == 69) { ret->rvalue.val = (yoyo_gamepads[0].buttons[3] > 0) ? 1.0f : 0.0f; return; } // 'E' -> Triangle
+	if (k == 87 || k == 38) { ret->rvalue.val = (yoyo_gamepads[0].buttons[12] > 0 || yoyo_gamepads[0].axis[1] < -0.2) ? 1.0f : 0.0f; return; }
+	if (k == 83 || k == 40) { ret->rvalue.val = (yoyo_gamepads[0].buttons[13] > 0 || yoyo_gamepads[0].axis[1] > 0.2) ? 1.0f : 0.0f; return; }
+	if (k == 65 || k == 37) { ret->rvalue.val = (yoyo_gamepads[0].buttons[14] > 0 || yoyo_gamepads[0].axis[0] < -0.2) ? 1.0f : 0.0f; return; }
+	if (k == 68 || k == 39) { ret->rvalue.val = (yoyo_gamepads[0].buttons[15] > 0 || yoyo_gamepads[0].axis[0] > 0.2) ? 1.0f : 0.0f; return; }
+	ret->rvalue.val = 0.0f;
+}
+
+static void gh_keyboard_check_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	ret->kind = VALUE_REAL;
+	int k = get_rvalue_int(args, 0);
+	if (k == 32) { ret->rvalue.val = (yoyo_gamepads[0].buttons[0] == 2) ? 1.0f : 0.0f; return; } // Space -> Cross
+	if (k == 13) { ret->rvalue.val = (yoyo_gamepads[0].buttons[0] == 2 || yoyo_gamepads[0].buttons[9] == 2) ? 1.0f : 0.0f; return; } // Enter -> Cross / Start
+	if (k == 82) { ret->rvalue.val = (yoyo_gamepads[0].buttons[2] == 2) ? 1.0f : 0.0f; return; } // 'R' -> Square
+	if (k == 16 || k == 17 || k == 160) { ret->rvalue.val = (yoyo_gamepads[0].buttons[1] == 2 || yoyo_gamepads[0].buttons[6] == 2) ? 1.0f : 0.0f; return; } // Shift/Ctrl -> Circle / L Bumper
+	if (k == 27) { ret->rvalue.val = (yoyo_gamepads[0].buttons[9] == 2 || yoyo_gamepads[0].buttons[1] == 2) ? 1.0f : 0.0f; return; } // Escape -> Start / Circle
+	if (k == 69) { ret->rvalue.val = (yoyo_gamepads[0].buttons[3] == 2) ? 1.0f : 0.0f; return; } // 'E' -> Triangle
+	if (k == 87 || k == 38) { ret->rvalue.val = (yoyo_gamepads[0].buttons[12] == 2) ? 1.0f : 0.0f; return; }
+	if (k == 83 || k == 40) { ret->rvalue.val = (yoyo_gamepads[0].buttons[13] == 2) ? 1.0f : 0.0f; return; }
+	if (k == 65 || k == 37) { ret->rvalue.val = (yoyo_gamepads[0].buttons[14] == 2) ? 1.0f : 0.0f; return; }
+	if (k == 68 || k == 39) { ret->rvalue.val = (yoyo_gamepads[0].buttons[15] == 2) ? 1.0f : 0.0f; return; }
+	ret->rvalue.val = 0.0f;
+}
+
+static void gh_keyboard_check_released(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	ret->kind = VALUE_REAL;
+	int k = get_rvalue_int(args, 0);
+	if (k == 32) { ret->rvalue.val = (yoyo_gamepads[0].buttons[0] == -1) ? 1.0f : 0.0f; return; }
+	if (k == 82) { ret->rvalue.val = (yoyo_gamepads[0].buttons[2] == -1) ? 1.0f : 0.0f; return; }
+	if (k == 16 || k == 17 || k == 160) { ret->rvalue.val = (yoyo_gamepads[0].buttons[1] == -1 || yoyo_gamepads[0].buttons[6] == -1) ? 1.0f : 0.0f; return; }
+	if (k == 27) { ret->rvalue.val = (yoyo_gamepads[0].buttons[9] == -1 || yoyo_gamepads[0].buttons[1] == -1) ? 1.0f : 0.0f; return; }
+	ret->rvalue.val = 0.0f;
+}
+
+static void gh_mouse_check_button(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	ret->kind = VALUE_REAL;
+	int b = get_rvalue_int(args, 0);
+	if (b == 1 || b == -1) {
+		ret->rvalue.val = (yoyo_gamepads[0].buttons[7] > 0 || yoyo_gamepads[0].buttons[5] > 0) ? 1.0f : 0.0f;
+		return;
+	}
+	ret->rvalue.val = 0.0f;
+}
+
+static void gh_mouse_check_button_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	ret->kind = VALUE_REAL;
+	int b = get_rvalue_int(args, 0);
+	if (b == 1 || b == -1) {
+		ret->rvalue.val = (yoyo_gamepads[0].buttons[7] == 2 || yoyo_gamepads[0].buttons[5] == 2 || yoyo_gamepads[0].buttons[0] == 2) ? 1.0f : 0.0f;
+		return;
+	}
+	ret->rvalue.val = 0.0f;
+}
+
+static void gh_mouse_check_button_released(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	ret->kind = VALUE_REAL;
+	int b = get_rvalue_int(args, 0);
+	if (b == 1 || b == -1) {
+		ret->rvalue.val = (yoyo_gamepads[0].buttons[7] == -1 || yoyo_gamepads[0].buttons[5] == -1 || yoyo_gamepads[0].buttons[0] == -1) ? 1.0f : 0.0f;
+		return;
+	}
+	ret->rvalue.val = 0.0f;
 }
 
 void IO_Update() {
@@ -683,7 +748,12 @@ void patch_gamepad(const char *game_name) {
 	Function_Add("display_mouse_get_y", (intptr_t)mouse_get_y, 1, 0);
 	Function_Add("window_mouse_get_x", (intptr_t)mouse_get_x, 1, 0);
 	Function_Add("window_mouse_get_y", (intptr_t)mouse_get_y, 1, 0);
-	Function_Add("keyboard_check_pressed", (intptr_t)keyboard_check_pressed, 1, 0);
+	Function_Add("keyboard_check", (intptr_t)gh_keyboard_check, 1, 1);
+	Function_Add("keyboard_check_pressed", (intptr_t)gh_keyboard_check_pressed, 1, 1);
+	Function_Add("keyboard_check_released", (intptr_t)gh_keyboard_check_released, 1, 1);
+	Function_Add("mouse_check_button", (intptr_t)gh_mouse_check_button, 1, 1);
+	Function_Add("mouse_check_button_pressed", (intptr_t)gh_mouse_check_button_pressed, 1, 1);
+	Function_Add("mouse_check_button_released", (intptr_t)gh_mouse_check_button_released, 1, 1);
 	
 #ifdef STANDALONE_MODE
 	FILE *f = fopen("app0:keys.ini", "r");
