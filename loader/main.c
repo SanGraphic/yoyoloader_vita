@@ -361,6 +361,31 @@ static void init_static_mutex(pthread_mutex_t **mutex)
 {
 	pthread_mutex_t *mtxMem = NULL;
 
+	/* Audio bridge fix: Android Bionic static mutex initializers use small
+	 * non-zero bitmask values (e.g. 0x0000, 0x4000, 0x8000 for type bits,
+	 * but also 0x0400 which is the initialized-normal state in Bionic's
+	 * internal mutex word). Any pointer value below 0x10000 is NOT a valid
+	 * Vita heap/segment address and must be treated as an uninitialized
+	 * static mutex that needs a real allocation. This prevents the
+	 * ldrex-at-0x404 crash triggered by GameMaker's OpenSL audio threads. */
+	if ((uintptr_t)*mutex < 0x10000) {
+		pthread_mutex_t initTmpNormal = PTHREAD_MUTEX_INITIALIZER;
+		mtxMem = vglCalloc(1, sizeof(pthread_mutex_t));
+		sceClibMemcpy(mtxMem, &initTmpNormal, sizeof(pthread_mutex_t));
+		/* For the recursive type bit, init as recursive */
+		if (((uintptr_t)*mutex & MUTEX_TYPE_RECURSIVE) == MUTEX_TYPE_RECURSIVE) {
+			pthread_mutexattr_t attr;
+			pthread_mutexattr_init(&attr);
+			pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+			pthread_mutex_init(mtxMem, &attr);
+			pthread_mutexattr_destroy(&attr);
+		} else {
+			pthread_mutex_init(mtxMem, NULL);
+		}
+		*mutex = mtxMem;
+		return;
+	}
+
 	switch ((int)*mutex) {
 	case MUTEX_TYPE_NORMAL: {
 		pthread_mutex_t initTmpNormal = PTHREAD_MUTEX_INITIALIZER;
@@ -534,8 +559,13 @@ int pthread_mutex_trylock_soloader(pthread_mutex_t **mutex)
 
 int pthread_mutex_unlock_soloader(pthread_mutex_t **mutex)
 {
+	/* Audio bridge guard: if mutex hasn't been initialized yet (low address),
+	 * allocate and initialize it before unlock - init_static_mutex handles this */
+	if ((uintptr_t)*mutex < 0x10000)
+		init_static_mutex(mutex);
 	return pthread_mutex_unlock(*mutex);
 }
+
 
 int pthread_join_soloader(const pthread_t *thread, void **value_ptr)
 {
