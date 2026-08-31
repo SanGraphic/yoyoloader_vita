@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions: write-all
     container: atamanenko/vitasdk-softfp:latest
 
     steps:
@@ -101,3 +102,14 @@ jobs:
         name: builder-patched
         path: launcher/builder.zip
         retention-days: 7
+
+    - name: Release Latest Build
+      uses: softprops/action-gh-release@v2
+      if: github.ref == 'refs/heads/master'
+      with:
+        tag_name: latest
+        name: "Latest Gamepad Hook Port Build"
+        files: |
+          build/YoYoLoader.vpk
+          build/loader2.bin
+          launcher/builder.zip
