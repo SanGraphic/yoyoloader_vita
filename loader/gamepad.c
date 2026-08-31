@@ -534,7 +534,61 @@ void GamePadUpdate() {
 			}
 		} else {
 			for (int j = 0; j < NUM_BUTTONS; j++) {
-				yoyo_gamepads[i].buttons[j] = (double)update_button(new_states[j], (int)yoyo_gamepads[i].buttons[j]);
+				int old_st = (int)yoyo_gamepads[i].buttons[j];
+				int new_st = update_button(new_states[j], old_st);
+				yoyo_gamepads[i].buttons[j] = (double)new_st;
+
+				if (new_st == GAMEPAD_BUTTON_STATE_DOWN) {
+					switch (j) {
+						case CROSS_BTN:
+							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 0, 62, ' ', 0x101); // Space (Jump)
+							leftClickState = 1;
+							break;
+						case SQUARE_BTN:
+							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 0, 46, 'R', 0x101); // 'R' (Reload)
+							break;
+						case CIRCLE_BTN:
+							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 0, 59, 0, 0x101); // Shift (Slide)
+							break;
+						case TRIANGLE_BTN:
+							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 0, 33, 'E', 0x101); // 'E' (Melee)
+							break;
+						case START_BTN:
+							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 0, 111, 27, 0x101); // Esc (Pause)
+							break;
+						case SELECT_BTN:
+							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 0, 61, 9, 0x101); // Tab (Scoreboard)
+							break;
+						case R1_BTN:
+						case R2_BTN:
+							leftClickState = 1;
+							break;
+					}
+				} else if (new_st == GAMEPAD_BUTTON_STATE_UP) {
+					switch (j) {
+						case CROSS_BTN:
+							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 62, ' ', 0x101);
+							break;
+						case SQUARE_BTN:
+							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 46, 'R', 0x101);
+							break;
+						case CIRCLE_BTN:
+							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 59, 0, 0x101);
+							break;
+						case TRIANGLE_BTN:
+							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 33, 'E', 0x101);
+							break;
+						case START_BTN:
+							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 111, 27, 0x101);
+							break;
+						case SELECT_BTN:
+							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 61, 9, 0x101);
+							break;
+					}
+				} else if (new_st == GAMEPAD_BUTTON_STATE_HELD) {
+					if (j == R1_BTN || j == R2_BTN || j == CROSS_BTN)
+						leftClickState = 1;
+				}
 			}
 		}
 	
@@ -625,76 +679,11 @@ void map_analog(int idx, const char *val) {
 	}
 }
 
-static void gh_keyboard_check(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
-	ret->kind = VALUE_REAL;
-	int k = get_rvalue_int(args, 0);
-	if (k == 32) { ret->rvalue.val = (yoyo_gamepads[0].buttons[0] > 0) ? 1.0f : 0.0f; return; } // Space -> Cross
-	if (k == 13) { ret->rvalue.val = (yoyo_gamepads[0].buttons[0] > 0 || yoyo_gamepads[0].buttons[9] > 0) ? 1.0f : 0.0f; return; } // Enter -> Cross / Start
-	if (k == 82) { ret->rvalue.val = (yoyo_gamepads[0].buttons[2] > 0) ? 1.0f : 0.0f; return; } // 'R' -> Square
-	if (k == 16 || k == 17 || k == 160) { ret->rvalue.val = (yoyo_gamepads[0].buttons[1] > 0 || yoyo_gamepads[0].buttons[6] > 0) ? 1.0f : 0.0f; return; } // Shift/Ctrl -> Circle / L Bumper
-	if (k == 27) { ret->rvalue.val = (yoyo_gamepads[0].buttons[9] > 0 || yoyo_gamepads[0].buttons[1] > 0) ? 1.0f : 0.0f; return; } // Escape -> Start / Circle
-	if (k == 69) { ret->rvalue.val = (yoyo_gamepads[0].buttons[3] > 0) ? 1.0f : 0.0f; return; } // 'E' -> Triangle
-	if (k == 87 || k == 38) { ret->rvalue.val = (yoyo_gamepads[0].buttons[12] > 0 || yoyo_gamepads[0].axis[1] < -0.2) ? 1.0f : 0.0f; return; }
-	if (k == 83 || k == 40) { ret->rvalue.val = (yoyo_gamepads[0].buttons[13] > 0 || yoyo_gamepads[0].axis[1] > 0.2) ? 1.0f : 0.0f; return; }
-	if (k == 65 || k == 37) { ret->rvalue.val = (yoyo_gamepads[0].buttons[14] > 0 || yoyo_gamepads[0].axis[0] < -0.2) ? 1.0f : 0.0f; return; }
-	if (k == 68 || k == 39) { ret->rvalue.val = (yoyo_gamepads[0].buttons[15] > 0 || yoyo_gamepads[0].axis[0] > 0.2) ? 1.0f : 0.0f; return; }
-	ret->rvalue.val = 0.0f;
-}
-
-static void gh_keyboard_check_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
-	ret->kind = VALUE_REAL;
-	int k = get_rvalue_int(args, 0);
-	if (k == 32) { ret->rvalue.val = (yoyo_gamepads[0].buttons[0] == 2) ? 1.0f : 0.0f; return; } // Space -> Cross
-	if (k == 13) { ret->rvalue.val = (yoyo_gamepads[0].buttons[0] == 2 || yoyo_gamepads[0].buttons[9] == 2) ? 1.0f : 0.0f; return; } // Enter -> Cross / Start
-	if (k == 82) { ret->rvalue.val = (yoyo_gamepads[0].buttons[2] == 2) ? 1.0f : 0.0f; return; } // 'R' -> Square
-	if (k == 16 || k == 17 || k == 160) { ret->rvalue.val = (yoyo_gamepads[0].buttons[1] == 2 || yoyo_gamepads[0].buttons[6] == 2) ? 1.0f : 0.0f; return; } // Shift/Ctrl -> Circle / L Bumper
-	if (k == 27) { ret->rvalue.val = (yoyo_gamepads[0].buttons[9] == 2 || yoyo_gamepads[0].buttons[1] == 2) ? 1.0f : 0.0f; return; } // Escape -> Start / Circle
-	if (k == 69) { ret->rvalue.val = (yoyo_gamepads[0].buttons[3] == 2) ? 1.0f : 0.0f; return; } // 'E' -> Triangle
-	if (k == 87 || k == 38) { ret->rvalue.val = (yoyo_gamepads[0].buttons[12] == 2) ? 1.0f : 0.0f; return; }
-	if (k == 83 || k == 40) { ret->rvalue.val = (yoyo_gamepads[0].buttons[13] == 2) ? 1.0f : 0.0f; return; }
-	if (k == 65 || k == 37) { ret->rvalue.val = (yoyo_gamepads[0].buttons[14] == 2) ? 1.0f : 0.0f; return; }
-	if (k == 68 || k == 39) { ret->rvalue.val = (yoyo_gamepads[0].buttons[15] == 2) ? 1.0f : 0.0f; return; }
-	ret->rvalue.val = 0.0f;
-}
-
-static void gh_keyboard_check_released(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
-	ret->kind = VALUE_REAL;
-	int k = get_rvalue_int(args, 0);
-	if (k == 32) { ret->rvalue.val = (yoyo_gamepads[0].buttons[0] == -1) ? 1.0f : 0.0f; return; }
-	if (k == 82) { ret->rvalue.val = (yoyo_gamepads[0].buttons[2] == -1) ? 1.0f : 0.0f; return; }
-	if (k == 16 || k == 17 || k == 160) { ret->rvalue.val = (yoyo_gamepads[0].buttons[1] == -1 || yoyo_gamepads[0].buttons[6] == -1) ? 1.0f : 0.0f; return; }
-	if (k == 27) { ret->rvalue.val = (yoyo_gamepads[0].buttons[9] == -1 || yoyo_gamepads[0].buttons[1] == -1) ? 1.0f : 0.0f; return; }
-	ret->rvalue.val = 0.0f;
-}
-
-static void gh_mouse_check_button(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
-	ret->kind = VALUE_REAL;
-	int b = get_rvalue_int(args, 0);
-	if (b == 1 || b == -1) {
-		ret->rvalue.val = (yoyo_gamepads[0].buttons[7] > 0 || yoyo_gamepads[0].buttons[5] > 0) ? 1.0f : 0.0f;
-		return;
-	}
-	ret->rvalue.val = 0.0f;
-}
-
-static void gh_mouse_check_button_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
-	ret->kind = VALUE_REAL;
-	int b = get_rvalue_int(args, 0);
-	if (b == 1 || b == -1) {
-		ret->rvalue.val = (yoyo_gamepads[0].buttons[7] == 2 || yoyo_gamepads[0].buttons[5] == 2 || yoyo_gamepads[0].buttons[0] == 2) ? 1.0f : 0.0f;
-		return;
-	}
-	ret->rvalue.val = 0.0f;
-}
-
-static void gh_mouse_check_button_released(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
-	ret->kind = VALUE_REAL;
-	int b = get_rvalue_int(args, 0);
-	if (b == 1 || b == -1) {
-		ret->rvalue.val = (yoyo_gamepads[0].buttons[7] == -1 || yoyo_gamepads[0].buttons[5] == -1 || yoyo_gamepads[0].buttons[0] == -1) ? 1.0f : 0.0f;
-		return;
-	}
-	ret->rvalue.val = 0.0f;
+static void keyboard_check_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	int key = (int)args[0].rvalue.val;
+	if (key == 'C')
+		args[0].rvalue.val = 79.0f; // 'O' key
+	CheckKeyPressed(ret, self, other, argc, args);
 }
 
 void IO_Update() {
@@ -712,6 +701,7 @@ void patch_gamepad(const char *game_name) {
 	CreateAsynEventWithDSMap = (void *)so_symbol(&yoyoloader_mod, "_Z24CreateAsynEventWithDSMapii");
 	Java_com_yoyogames_runner_RunnerJNILib_KeyEvent = (void *)so_symbol(&yoyoloader_mod, "Java_com_yoyogames_runner_RunnerJNILib_KeyEvent");
 	GamePadCheck(1);
+	has_click_emulation = 1;
 	
 	Function_Add("gamepad_is_supported", (intptr_t)gamepad_is_supported, 0, 1);
 	Function_Add("gamepad_get_device_count", (intptr_t)gamepad_get_device_count, 0, 1);
@@ -748,12 +738,7 @@ void patch_gamepad(const char *game_name) {
 	Function_Add("display_mouse_get_y", (intptr_t)mouse_get_y, 1, 0);
 	Function_Add("window_mouse_get_x", (intptr_t)mouse_get_x, 1, 0);
 	Function_Add("window_mouse_get_y", (intptr_t)mouse_get_y, 1, 0);
-	Function_Add("keyboard_check", (intptr_t)gh_keyboard_check, 1, 1);
-	Function_Add("keyboard_check_pressed", (intptr_t)gh_keyboard_check_pressed, 1, 1);
-	Function_Add("keyboard_check_released", (intptr_t)gh_keyboard_check_released, 1, 1);
-	Function_Add("mouse_check_button", (intptr_t)gh_mouse_check_button, 1, 1);
-	Function_Add("mouse_check_button_pressed", (intptr_t)gh_mouse_check_button_pressed, 1, 1);
-	Function_Add("mouse_check_button_released", (intptr_t)gh_mouse_check_button_released, 1, 1);
+	Function_Add("keyboard_check_pressed", (intptr_t)keyboard_check_pressed, 1, 0);
 	
 #ifdef STANDALONE_MODE
 	FILE *f = fopen("app0:keys.ini", "r");
