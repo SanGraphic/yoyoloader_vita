@@ -30,6 +30,7 @@ extern int platTarget;
 extern char fake_env[0x1000];
 
 int (*YYGetInt32) (void *args, int idx);
+void (*YYCreateString) (retval_t *ret, const char *str);
 int (*CreateDsMap) (int a1, char *type, int a3, int a4, char *desc, char *type2, double id, int a8);
 void (*GamepadUpdateM) ();
 void (*ProcessVirtualKeys) ();
@@ -181,16 +182,51 @@ void gamepad_is_connected(retval_t *ret, void *self, void *other, int argc, retv
 }
 
 void gamepad_get_description(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
-	ref_t *ref = malloc(sizeof(ref_t));
+	static const char kName[] = "Xbox 360 Controller (XInput STANDARD GAMEPAD)";
+	if (YYCreateString) {
+		YYCreateString(ret, kName);
+	} else {
+		ref_t *ref = malloc(sizeof(ref_t));
+		*ref = (ref_t){
+			.m_refCount = 1,
+			.m_size = strlen(kName),
+			.m_thing = strdup(kName)
+		};
+		ret->kind = VALUE_STRING;
+		ret->rvalue.str = ref;
+	}
+}
 
-	*ref = (ref_t){
-		.m_refCount = 1,
-		.m_size = strlen("Xbox 360 Controller (XInput STANDARD GAMEPAD)"),
-		.m_thing = strdup("Xbox 360 Controller (XInput STANDARD GAMEPAD)")
-	};
+void gamepad_get_guid(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	static const char kGuid[] = "030000005e0400008e02000010010000";
+	if (YYCreateString) {
+		YYCreateString(ret, kGuid);
+	} else {
+		ref_t *ref = malloc(sizeof(ref_t));
+		*ref = (ref_t){
+			.m_refCount = 1,
+			.m_size = strlen(kGuid),
+			.m_thing = strdup(kGuid)
+		};
+		ret->kind = VALUE_STRING;
+		ret->rvalue.str = ref;
+	}
+}
 
-	ret->kind = VALUE_STRING;
-	ret->rvalue.str = ref;
+void gamepad_get_mapping(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	static const char kMapping[] = "030000005e0400008e02000014010000,Xbox 360 Controller (XInput STANDARD GAMEPAD),a:b0,b:b1,back:b6,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,guide:b8,leftshoulder:b4,leftstick:b9,lefttrigger:a2,leftx:a0,lefty:a1,rightshoulder:b5,rightstick:b10,righttrigger:a5,rightx:a3,righty:a4,start:b7,x:b2,y:b3";
+	if (YYCreateString) {
+		YYCreateString(ret, kMapping);
+	} else {
+		ref_t *ref = malloc(sizeof(ref_t));
+		*ref = (ref_t){
+			.m_refCount = 1,
+			.m_size = strlen(kMapping),
+			.m_thing = strdup(kMapping)
+		};
+		ret->kind = VALUE_STRING;
+		ret->rvalue.str = ref;
+	}
 }
 
 void gamepad_get_button_threshold(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
@@ -616,6 +652,8 @@ void patch_gamepad(const char *game_name) {
 	Function_Add("gamepad_get_device_count", (intptr_t)gamepad_get_device_count, 0, 1);
 	Function_Add("gamepad_is_connected", (intptr_t)gamepad_is_connected, 1, 1);
 	Function_Add("gamepad_get_description", (intptr_t)gamepad_get_description, 1, 1);
+	Function_Add("gamepad_get_guid", (intptr_t)gamepad_get_guid, 1, 1);
+	Function_Add("gamepad_get_mapping", (intptr_t)gamepad_get_mapping, 1, 1);
 	Function_Add("gamepad_get_button_threshold", (intptr_t)gamepad_get_button_threshold, 1, 1);
 	Function_Add("gamepad_set_button_threshold", (intptr_t)gamepad_set_button_threshold, 2, 1);
 	Function_Add("gamepad_get_axis_deadzone", (intptr_t)gamepad_get_axis_deadzone, 1, 1);
@@ -634,6 +672,7 @@ void patch_gamepad(const char *game_name) {
 	hook_addr(so_symbol(&yoyoloader_mod, "_Z9IO_Updatev"), (intptr_t)IO_Update);
 	
 	YYGetInt32 = (void *)so_symbol(&yoyoloader_mod, "_Z10YYGetInt32PK6RValuei");
+	YYCreateString = (void *)so_symbol(&yoyoloader_mod, "_Z14YYCreateStringP6RValuePKc");
 	g_MousePosX = (int *)so_symbol(&yoyoloader_mod, "g_MousePosX");
 	g_MousePosY = (int *)so_symbol(&yoyoloader_mod, "g_MousePosY");
 	g_DoMouseButton = (int *)so_symbol(&yoyoloader_mod, "g_DoMouseButton");
