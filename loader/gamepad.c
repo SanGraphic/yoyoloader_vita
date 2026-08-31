@@ -308,6 +308,11 @@ void gamepad_axis_value(retval_t *ret, void *self, void *other, int argc, retval
 		ret->rvalue.val = 0.0f;
 }
 
+static uint8_t cur_btn_down[4][NUM_BUTTONS] = {0};
+static uint8_t prev_btn_down[4][NUM_BUTTONS] = {0};
+static uint8_t step_btn_pressed[4][NUM_BUTTONS] = {0};
+static uint8_t step_btn_released[4][NUM_BUTTONS] = {0};
+
 void gamepad_button_check(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
 	ret->kind = VALUE_REAL;
 	int id = get_rvalue_int(args, 0);
@@ -318,7 +323,7 @@ void gamepad_button_check(retval_t *ret, void *self, void *other, int argc, retv
 		return;
 	}
 
-	ret->rvalue.val = (yoyo_gamepads[id].buttons[btn] > 0) ? 1.0f : 0.0f;
+	ret->rvalue.val = cur_btn_down[id][btn] ? 1.0f : 0.0f;
 }
 
 void gamepad_button_check_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
@@ -331,7 +336,7 @@ void gamepad_button_check_pressed(retval_t *ret, void *self, void *other, int ar
 		return;
 	}
 
-	ret->rvalue.val = (yoyo_gamepads[id].buttons[btn] == 2) ? 1.0f : 0.0f;
+	ret->rvalue.val = step_btn_pressed[id][btn] ? 1.0f : 0.0f;
 }
 
 void gamepad_button_check_released(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
@@ -344,7 +349,7 @@ void gamepad_button_check_released(retval_t *ret, void *self, void *other, int a
 		return;
 	}
 
-	ret->rvalue.val = (yoyo_gamepads[id].buttons[btn] == -1) ? 1.0f : 0.0f;
+	ret->rvalue.val = step_btn_released[id][btn] ? 1.0f : 0.0f;
 }
 
 void gamepad_button_count(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
@@ -534,11 +539,14 @@ void GamePadUpdate() {
 			}
 		} else {
 			for (int j = 0; j < NUM_BUTTONS; j++) {
-				int old_st = (int)yoyo_gamepads[i].buttons[j];
-				int new_st = update_button(new_states[j], old_st);
-				yoyo_gamepads[i].buttons[j] = (double)new_st;
+				bool cur = (new_states[j] != 0);
+				cur_btn_down[i][j] = cur ? 1 : 0;
+				step_btn_pressed[i][j] = (cur && !prev_btn_down[i][j]) ? 1 : 0;
+				step_btn_released[i][j] = (!cur && prev_btn_down[i][j]) ? 1 : 0;
+				prev_btn_down[i][j] = cur ? 1 : 0;
+				yoyo_gamepads[i].buttons[j] = cur ? 1.0f : 0.0f;
 
-				if (new_st == GAMEPAD_BUTTON_STATE_DOWN) {
+				if (step_btn_pressed[i][j]) {
 					switch (j) {
 						case CROSS_BTN:
 							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 0, 62, ' ', 0x101); // Space (Jump)
@@ -564,7 +572,7 @@ void GamePadUpdate() {
 							leftClickState = 1;
 							break;
 					}
-				} else if (new_st == GAMEPAD_BUTTON_STATE_UP) {
+				} else if (step_btn_released[i][j]) {
 					switch (j) {
 						case CROSS_BTN:
 							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 62, ' ', 0x101);
@@ -585,7 +593,8 @@ void GamePadUpdate() {
 							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 61, 9, 0x101);
 							break;
 					}
-				} else if (new_st == GAMEPAD_BUTTON_STATE_HELD) {
+				}
+				if (cur) {
 					if (j == R1_BTN || j == R2_BTN || j == CROSS_BTN)
 						leftClickState = 1;
 				}
