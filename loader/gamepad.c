@@ -309,10 +309,9 @@ void gamepad_axis_value(retval_t *ret, void *self, void *other, int argc, retval
 		ret->rvalue.val = 0.0f;
 }
 
-static uint8_t cur_btn_down[4][NUM_BUTTONS] = {0};
-static uint8_t prev_btn_down[4][NUM_BUTTONS] = {0};
-static uint8_t step_btn_pressed[4][NUM_BUTTONS] = {0};
-static uint8_t step_btn_released[4][NUM_BUTTONS] = {0};
+static uint8_t raw_btn_down[4][NUM_BUTTONS] = {0};
+static uint8_t pending_press[4][NUM_BUTTONS] = {0};
+static uint8_t pending_release[4][NUM_BUTTONS] = {0};
 
 void gamepad_button_check(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
 	ret->kind = VALUE_REAL;
@@ -324,7 +323,7 @@ void gamepad_button_check(retval_t *ret, void *self, void *other, int argc, retv
 		return;
 	}
 
-	ret->rvalue.val = cur_btn_down[id][btn] ? 1.0f : 0.0f;
+	ret->rvalue.val = raw_btn_down[id][btn] ? 1.0f : 0.0f;
 }
 
 void gamepad_button_check_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
@@ -337,7 +336,12 @@ void gamepad_button_check_pressed(retval_t *ret, void *self, void *other, int ar
 		return;
 	}
 
-	ret->rvalue.val = step_btn_pressed[id][btn] ? 1.0f : 0.0f;
+	if (pending_press[id][btn]) {
+		pending_press[id][btn] = 0;
+		ret->rvalue.val = 1.0f;
+		return;
+	}
+	ret->rvalue.val = 0.0f;
 }
 
 void gamepad_button_check_released(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
@@ -350,7 +354,12 @@ void gamepad_button_check_released(retval_t *ret, void *self, void *other, int a
 		return;
 	}
 
-	ret->rvalue.val = step_btn_released[id][btn] ? 1.0f : 0.0f;
+	if (pending_release[id][btn]) {
+		pending_release[id][btn] = 0;
+		ret->rvalue.val = 1.0f;
+		return;
+	}
+	ret->rvalue.val = 0.0f;
 }
 
 void gamepad_button_count(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
@@ -458,22 +467,22 @@ void GamePadUpdate() {
 		sceCtrlPeekBufferPositiveExt2(port, &pad, 1);
 	
 		uint8_t new_states[NUM_BUTTONS] = {
-			pad.buttons & SCE_CTRL_CROSS ? 1 : 0,
-			pad.buttons & SCE_CTRL_CIRCLE ? 1 : 0,
-			pad.buttons & SCE_CTRL_SQUARE ? 1 : 0,
-			pad.buttons & SCE_CTRL_TRIANGLE ? 1 : 0,
-			pad.buttons & SCE_CTRL_L1 ? 1 : 0,
-			pad.buttons & SCE_CTRL_R1 ? 1 : 0,
-			(pad.buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) ? 1 : 0,
-			(pad.buttons & (SCE_CTRL_R1 | SCE_CTRL_R2)) ? 1 : 0,
-			pad.buttons & SCE_CTRL_SELECT ? 1 : 0,
-			pad.buttons & SCE_CTRL_START ? 1 : 0,
-			pad.buttons & SCE_CTRL_L3 ? 1 : 0,
-			pad.buttons & SCE_CTRL_R3 ? 1 : 0,
-			pad.buttons & SCE_CTRL_UP ? 1 : 0,
-			pad.buttons & SCE_CTRL_DOWN ? 1 : 0,
-			pad.buttons & SCE_CTRL_LEFT ? 1 : 0,
-			pad.buttons & SCE_CTRL_RIGHT ? 1 : 0
+			(pad.buttons & SCE_CTRL_CROSS) ? 1 : 0,    // 0: gp_face1 (Cross / Jump)
+			(pad.buttons & SCE_CTRL_CIRCLE) ? 1 : 0,   // 1: gp_face2 (Circle / Slide)
+			(pad.buttons & SCE_CTRL_SQUARE) ? 1 : 0,   // 2: gp_face3 (Square / Reload)
+			(pad.buttons & SCE_CTRL_TRIANGLE) ? 1 : 0, // 3: gp_face4 (Triangle / Melee)
+			(pad.buttons & SCE_CTRL_L1) ? 1 : 0,       // 4: gp_shoulderl (L1 / Slide)
+			(pad.buttons & SCE_CTRL_R1) ? 1 : 0,       // 5: gp_shoulderr (R1 / Shoot)
+			(pad.buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) ? 1 : 0, // 6: gp_shoulderlb (L2 / Slide)
+			(pad.buttons & (SCE_CTRL_R1 | SCE_CTRL_R2)) ? 1 : 0, // 7: gp_shoulderrb (R2 / Shoot)
+			(pad.buttons & (SCE_CTRL_SELECT | SCE_CTRL_TRIANGLE)) ? 1 : 0, // 8: gp_select / Melee
+			(pad.buttons & SCE_CTRL_START) ? 1 : 0,    // 9: gp_start (Pause)
+			(pad.buttons & SCE_CTRL_L3) ? 1 : 0,       // 10: gp_stickl
+			(pad.buttons & SCE_CTRL_R3) ? 1 : 0,       // 11: gp_stickr
+			(pad.buttons & SCE_CTRL_UP) ? 1 : 0,       // 12: gp_padu
+			(pad.buttons & SCE_CTRL_DOWN) ? 1 : 0,     // 13: gp_padd
+			(pad.buttons & SCE_CTRL_LEFT) ? 1 : 0,     // 14: gp_padl
+			(pad.buttons & SCE_CTRL_RIGHT) ? 1 : 0     // 15: gp_padr
 		};
 		
 #ifndef STANDALONE_MODE
@@ -541,9 +550,13 @@ void GamePadUpdate() {
 		} else {
 			for (int j = 0; j < NUM_BUTTONS; j++) {
 				uint8_t cur = new_states[j];
-				step_btn_pressed[i][j] = (cur && !cur_btn_down[i][j]) ? 1 : 0;
-				step_btn_released[i][j] = (!cur && cur_btn_down[i][j]) ? 1 : 0;
-				cur_btn_down[i][j] = cur;
+				if (cur && !raw_btn_down[i][j]) {
+					pending_press[i][j] = 1;
+				}
+				if (!cur && raw_btn_down[i][j]) {
+					pending_release[i][j] = 1;
+				}
+				raw_btn_down[i][j] = cur;
 				yoyo_gamepads[i].buttons[j] = cur ? 1.0f : 0.0f;
 			}
 		}
