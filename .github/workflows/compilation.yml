@@ -80,57 +80,24 @@ jobs:
         cp ../livearea/default_gate.png builder/assets/startup.png
         zip -9 -r builder.zip builder
 
-    - uses: svenstaro/upload-release-action@v2
+
+    - name: Upload YoYoLoader.vpk artifact
+      uses: actions/upload-artifact@v4
       with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: build/YoYoLoader.vpk
-        overwrite: true
-        tag: Nightly
+        name: YoYoLoader-patched
+        path: build/YoYoLoader.vpk
+        retention-days: 7
 
-    - uses: svenstaro/upload-release-action@v2
+    - name: Upload loader2.bin artifact
+      uses: actions/upload-artifact@v4
       with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: launcher/builder.zip
-        overwrite: true
-        tag: Nightly
+        name: loader2-patched
+        path: build/loader2.bin
+        retention-days: 7
 
-    - uses: svenstaro/upload-release-action@v2
+    - name: Upload builder.zip artifact
+      uses: actions/upload-artifact@v4
       with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: banners.zip
-        overwrite: true
-        tag: Nightly
-
-    - name: Publish Nightly to VitaDB
-      run: |
-        curl --fail-with-body --show-error \
-          -X POST \
-          -F "secret=${{ secrets.VITADB_SECRET }}" \
-          -F "vpk_url=https://github.com/Rinnegatamante/yoyoloader_vita/releases/download/Nightly/YoYoLoader.vpk" \
-          https://www.rinnegatamante.eu/vitadb/publish_nightly.php
-
-    - name: Restart workflow if an upload fails
-      if: ${{ failure() }}
-      uses: peter-evans/repository-dispatch@v2
-      with:
-        token: ${{ secrets.REPO_ACCESS_TOKEN }}
-        event-type: restart
-        client-payload: '{"runid": "${{ github.run_id }}"}'
-
-    - name: Get current date
-      id: date
-      run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
-
-    - name: Get changelog
-      id: changelog
-      uses: Rinnegatamante/get-git-log-action@master
-
-    - name: Update release body
-      id: update_release
-      uses: Rinnegatamante/update_release@master
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      with:
-        release_name: "Nightly ${{ steps.date.outputs.date }}"
-        body: "${{ format('{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n{6}\n{7}\n{8}\n{9}', steps.changelog.outputs.log0, steps.changelog.outputs.log1, steps.changelog.outputs.log2, steps.changelog.outputs.log3, steps.changelog.outputs.log4, steps.changelog.outputs.log5, steps.changelog.outputs.log6, steps.changelog.outputs.log7, steps.changelog.outputs.log8, steps.changelog.outputs.log9) }}"
-        tag: Nightly
+        name: builder-patched
+        path: launcher/builder.zip
+        retention-days: 7
