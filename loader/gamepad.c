@@ -540,65 +540,11 @@ void GamePadUpdate() {
 			}
 		} else {
 			for (int j = 0; j < NUM_BUTTONS; j++) {
-				bool cur = (new_states[j] != 0);
-				cur_btn_down[i][j] = cur ? 1 : 0;
-				step_btn_pressed[i][j] = (cur && !prev_btn_down[i][j]) ? 1 : 0;
-				step_btn_released[i][j] = (!cur && prev_btn_down[i][j]) ? 1 : 0;
-				prev_btn_down[i][j] = cur ? 1 : 0;
+				uint8_t cur = new_states[j];
+				step_btn_pressed[i][j] = (cur && !cur_btn_down[i][j]) ? 1 : 0;
+				step_btn_released[i][j] = (!cur && cur_btn_down[i][j]) ? 1 : 0;
+				cur_btn_down[i][j] = cur;
 				yoyo_gamepads[i].buttons[j] = cur ? 1.0f : 0.0f;
-
-				if (step_btn_pressed[i][j]) {
-					switch (j) {
-						case CROSS_BTN:
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 0, 62, ' ', 0x101); // Space (Jump)
-							leftClickState = 1;
-							break;
-						case SQUARE_BTN:
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 0, 46, 'R', 0x101); // 'R' (Reload)
-							break;
-						case CIRCLE_BTN:
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 0, 59, 0, 0x101); // Shift (Slide)
-							break;
-						case TRIANGLE_BTN:
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 0, 33, 'E', 0x101); // 'E' (Melee)
-							break;
-						case START_BTN:
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 0, 111, 27, 0x101); // Esc (Pause)
-							break;
-						case SELECT_BTN:
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 0, 61, 9, 0x101); // Tab (Scoreboard)
-							break;
-						case R1_BTN:
-						case R2_BTN:
-							leftClickState = 1;
-							break;
-					}
-				} else if (step_btn_released[i][j]) {
-					switch (j) {
-						case CROSS_BTN:
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 62, ' ', 0x101);
-							break;
-						case SQUARE_BTN:
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 46, 'R', 0x101);
-							break;
-						case CIRCLE_BTN:
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 59, 0, 0x101);
-							break;
-						case TRIANGLE_BTN:
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 33, 'E', 0x101);
-							break;
-						case START_BTN:
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 111, 27, 0x101);
-							break;
-						case SELECT_BTN:
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, 1, 61, 9, 0x101);
-							break;
-					}
-				}
-				if (cur) {
-					if (j == R1_BTN || j == R2_BTN || j == CROSS_BTN)
-						leftClickState = 1;
-				}
 			}
 		}
 	
