@@ -229,12 +229,40 @@ void gamepad_get_axis_deadzone(retval_t *ret, void *self, void *other, int argc,
 	ret->rvalue.val = yoyo_gamepads[id].deadzone;
 }
 
+static inline int get_rvalue_int(retval_t *args, int idx) {
+	if (YYGetInt32) {
+		return YYGetInt32(args, idx);
+	}
+	retval_t *r = &args[idx];
+	if (r->kind == VALUE_INT32)
+		return r->rvalue.v32;
+	if (r->kind == VALUE_INT64)
+		return (int)r->rvalue.v64;
+	if (r->kind == VALUE_BOOL)
+		return r->rvalue.v32 ? 1 : 0;
+	return (int)r->rvalue.val;
+}
+
+static inline int translate_button(retval_t *args, int idx) {
+	int v = get_rvalue_int(args, idx);
+	if (v >= 32769 && v < 32769 + NUM_BUTTONS)
+		v -= 32769;
+	return v;
+}
+
+static inline int translate_axis(retval_t *args, int idx) {
+	int v = get_rvalue_int(args, idx);
+	if (v >= 32785 && v < 32785 + 4)
+		v -= 32785;
+	return v;
+}
+
 void gamepad_axis_value(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
 	ret->kind = VALUE_REAL;
-	int id = (int)args[0].rvalue.val;
-	int axis = (int)(args[1].rvalue.val - ((double)(32785.0f)));
+	int id = get_rvalue_int(args, 0);
+	int axis = translate_axis(args, 1);
 	
-	if (!IS_CONTROLLER_BOUNDS || !IS_AXIS_BOUNDS) {
+	if (id < 0 || id >= 4 || !IS_AXIS_BOUNDS) {
 		ret->rvalue.val = 0.0f;
 		return;
 	}
@@ -246,10 +274,10 @@ void gamepad_axis_value(retval_t *ret, void *self, void *other, int argc, retval
 
 void gamepad_button_check(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
 	ret->kind = VALUE_REAL;
-	int id = (int)args[0].rvalue.val;
-	int btn = (int)(args[1].rvalue.val - ((double)(32769.0f)));
+	int id = get_rvalue_int(args, 0);
+	int btn = translate_button(args, 1);
 	
-	if (!IS_CONTROLLER_BOUNDS || !IS_BTN_BOUNDS) {
+	if (id < 0 || id >= 4 || !IS_BTN_BOUNDS) {
 		ret->rvalue.val = 0.0f;
 		return;
 	}
@@ -259,10 +287,10 @@ void gamepad_button_check(retval_t *ret, void *self, void *other, int argc, retv
 
 void gamepad_button_check_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
 	ret->kind = VALUE_REAL;
-	int id = (int)args[0].rvalue.val;
-	int btn = (int)(args[1].rvalue.val - ((double)(32769.0f)));
+	int id = get_rvalue_int(args, 0);
+	int btn = translate_button(args, 1);
 	
-	if (!IS_CONTROLLER_BOUNDS || !IS_BTN_BOUNDS) {
+	if (id < 0 || id >= 4 || !IS_BTN_BOUNDS) {
 		ret->rvalue.val = 0.0f;
 		return;
 	}
@@ -272,10 +300,10 @@ void gamepad_button_check_pressed(retval_t *ret, void *self, void *other, int ar
 
 void gamepad_button_check_released(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
 	ret->kind = VALUE_REAL;
-	int id = (int)args[0].rvalue.val;
-	int btn = (int)(args[1].rvalue.val - ((double)(32769.0f)));
+	int id = get_rvalue_int(args, 0);
+	int btn = translate_button(args, 1);
 	
-	if (!IS_CONTROLLER_BOUNDS || !IS_BTN_BOUNDS) {
+	if (id < 0 || id >= 4 || !IS_BTN_BOUNDS) {
 		ret->rvalue.val = 0.0f;
 		return;
 	}
@@ -394,8 +422,8 @@ void GamePadUpdate() {
 			pad.buttons & SCE_CTRL_TRIANGLE ? 1 : 0,
 			pad.buttons & SCE_CTRL_L1 ? 1 : 0,
 			pad.buttons & SCE_CTRL_R1 ? 1 : 0,
-			pad.buttons & SCE_CTRL_L2 ? 1 : 0,
-			pad.buttons & SCE_CTRL_R2 ? 1 : 0,
+			(pad.buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) ? 1 : 0,
+			(pad.buttons & (SCE_CTRL_R1 | SCE_CTRL_R2)) ? 1 : 0,
 			pad.buttons & SCE_CTRL_SELECT ? 1 : 0,
 			pad.buttons & SCE_CTRL_START ? 1 : 0,
 			pad.buttons & SCE_CTRL_L3 ? 1 : 0,
