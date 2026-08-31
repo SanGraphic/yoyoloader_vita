@@ -103,13 +103,23 @@ jobs:
         path: launcher/builder.zip
         retention-days: 7
 
-    - name: Release Latest Build
-      uses: softprops/action-gh-release@v2
-      if: github.ref == 'refs/heads/master'
-      with:
-        tag_name: latest
-        name: "Latest Gamepad Hook Port Build"
-        files: |
-          build/YoYoLoader.vpk
-          build/loader2.bin
-          launcher/builder.zip
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: write-all
+    if: github.ref == 'refs/heads/master'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release_files
+
+      - name: Release Latest Build
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Latest Gamepad Hook Port Build"
+          files: |
+            release_files/YoYoLoader-patched/YoYoLoader.vpk
+            release_files/loader2-patched/loader2.bin
+            release_files/builder-patched/builder.zip
