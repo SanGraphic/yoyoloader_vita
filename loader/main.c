@@ -415,7 +415,7 @@ static void init_static_mutex(pthread_mutex_t **mutex)
 
 static void init_static_cond(pthread_cond_t **cond)
 {
-	if (*cond == NULL) {
+	if ((uintptr_t)*cond < 0x10000) {
 		pthread_cond_t initTmp = PTHREAD_COND_INITIALIZER;
 		pthread_cond_t *condMem = vglCalloc(1, sizeof(pthread_cond_t));
 		sceClibMemcpy(condMem, &initTmp, sizeof(pthread_cond_t));
@@ -574,11 +574,14 @@ int pthread_join_soloader(const pthread_t *thread, void **value_ptr)
 
 int pthread_cond_wait_soloader(pthread_cond_t **cond, pthread_mutex_t **mutex)
 {
+	init_static_cond(cond);
+	init_static_mutex(mutex);
 	return pthread_cond_wait(*cond, *mutex);
 }
 
 int pthread_cond_broadcast_soloader(pthread_cond_t **cond)
 {
+	init_static_cond(cond);
 	return pthread_cond_broadcast(*cond);
 }
 
