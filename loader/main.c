@@ -2851,18 +2851,19 @@ void *pthread_main(void *arg) {
 	so_flush_caches(&yoyoloader_mod);
 	so_initialize(&yoyoloader_mod);
 	
-	// Initializing vitaGL
-	vglSetCircularPoolSize(3 * 1024);
+	// Initializing vitaGL with hardware optimized pools
+	vglSetCircularPoolSize(1024 * 1024);
+	vglSetParamBufferSize(16 * 1024 * 1024);
 	vglSetSemanticBindingMode(VGL_MODE_POSTPONED);
 	if (debugMode)
 		vglSetDisplayCallback(mem_profiler);
-	vglSetupGarbageCollector(127, 0x20000);
-	if (squeeze_mem)
-		vglSetParamBufferSize(2 * 1024 * 1024);
+	vglSetupGarbageCollector(127, 0x40000);
 	if (!uncached_mem)
 		vglUseCachedMem(GL_TRUE);
 	if (double_buffering)
 		vglUseTripleBuffering(GL_FALSE);
+	else
+		vglUseTripleBuffering(GL_TRUE);
 	if (maximizeMem)
 		vglInitWithCustomThreshold(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_NONE);
 	else
