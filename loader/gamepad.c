@@ -386,6 +386,181 @@ void gamepad_set_vibration(retval_t *ret, void *self, void *other, int argc, ret
 void gamepad_set_colour(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
 }
 
+static bool is_key_down_synthetic(int k) {
+	switch (k) {
+		case 32: // vk_space
+		case 13: // vk_enter
+			return raw_btn_down[0][CROSS_BTN] != 0;
+		case 16: // vk_shift
+		case 160: // vk_lshift
+		case 161: // vk_rshift
+		case 17: // vk_control
+		case 67: // 'C'
+		case 90: // 'Z'
+			return (raw_btn_down[0][CIRCLE_BTN] || raw_btn_down[0][L1_BTN] || raw_btn_down[0][L2_BTN]);
+		case 82: // 'R'
+			return raw_btn_down[0][SQUARE_BTN] != 0;
+		case 69: // 'E'
+		case 75: // 'K'
+			return raw_btn_down[0][TRIANGLE_BTN] != 0;
+		case 27: // vk_escape
+		case 80: // 'P'
+			return raw_btn_down[0][START_BTN] != 0;
+		case 9:  // vk_tab
+			return raw_btn_down[0][SELECT_BTN] != 0;
+		case 87: // 'W'
+		case 38: // vk_up
+			return (raw_btn_down[0][UP_BTN] || yoyo_gamepads[0].axis[1] < -0.25);
+		case 83: // 'S'
+		case 40: // vk_down
+			return (raw_btn_down[0][DOWN_BTN] || yoyo_gamepads[0].axis[1] > 0.25);
+		case 65: // 'A'
+		case 37: // vk_left
+			return (raw_btn_down[0][LEFT_BTN] || yoyo_gamepads[0].axis[0] < -0.25);
+		case 68: // 'D'
+		case 39: // vk_right
+			return (raw_btn_down[0][RIGHT_BTN] || yoyo_gamepads[0].axis[0] > 0.25);
+		case 1:  // vk_anykey
+			for (int b = 0; b < NUM_BUTTONS; b++) {
+				if (raw_btn_down[0][b]) return true;
+			}
+			return false;
+		default:
+			return false;
+	}
+}
+
+static bool is_key_pressed_synthetic(int k) {
+	switch (k) {
+		case 32: // vk_space
+		case 13: // vk_enter
+			if (pending_press[0][CROSS_BTN]) { pending_press[0][CROSS_BTN] = 0; return true; }
+			return false;
+		case 16: // vk_shift
+		case 160:
+		case 161:
+		case 17:
+		case 67:
+		case 90:
+			if (pending_press[0][CIRCLE_BTN]) { pending_press[0][CIRCLE_BTN] = 0; return true; }
+			if (pending_press[0][L1_BTN]) { pending_press[0][L1_BTN] = 0; return true; }
+			if (pending_press[0][L2_BTN]) { pending_press[0][L2_BTN] = 0; return true; }
+			return false;
+		case 82: // 'R'
+			if (pending_press[0][SQUARE_BTN]) { pending_press[0][SQUARE_BTN] = 0; return true; }
+			return false;
+		case 69: // 'E'
+		case 75: // 'K'
+			if (pending_press[0][TRIANGLE_BTN]) { pending_press[0][TRIANGLE_BTN] = 0; return true; }
+			return false;
+		case 27: // vk_escape
+		case 80: // 'P'
+			if (pending_press[0][START_BTN]) { pending_press[0][START_BTN] = 0; return true; }
+			return false;
+		case 9:  // vk_tab
+			if (pending_press[0][SELECT_BTN]) { pending_press[0][SELECT_BTN] = 0; return true; }
+			return false;
+		case 87: case 38:
+			if (pending_press[0][UP_BTN]) { pending_press[0][UP_BTN] = 0; return true; }
+			return false;
+		case 83: case 40:
+			if (pending_press[0][DOWN_BTN]) { pending_press[0][DOWN_BTN] = 0; return true; }
+			return false;
+		case 65: case 37:
+			if (pending_press[0][LEFT_BTN]) { pending_press[0][LEFT_BTN] = 0; return true; }
+			return false;
+		case 68: case 39:
+			if (pending_press[0][RIGHT_BTN]) { pending_press[0][RIGHT_BTN] = 0; return true; }
+			return false;
+		case 1:  // vk_anykey
+			for (int b = 0; b < NUM_BUTTONS; b++) {
+				if (pending_press[0][b]) { pending_press[0][b] = 0; return true; }
+			}
+			return false;
+		default:
+			return false;
+	}
+}
+
+static bool is_key_released_synthetic(int k) {
+	switch (k) {
+		case 32: case 13:
+			if (pending_release[0][CROSS_BTN]) { pending_release[0][CROSS_BTN] = 0; return true; }
+			return false;
+		case 16: case 160: case 161: case 17: case 67: case 90:
+			if (pending_release[0][CIRCLE_BTN]) { pending_release[0][CIRCLE_BTN] = 0; return true; }
+			if (pending_release[0][L1_BTN]) { pending_release[0][L1_BTN] = 0; return true; }
+			if (pending_release[0][L2_BTN]) { pending_release[0][L2_BTN] = 0; return true; }
+			return false;
+		case 82:
+			if (pending_release[0][SQUARE_BTN]) { pending_release[0][SQUARE_BTN] = 0; return true; }
+			return false;
+		case 69: case 75:
+			if (pending_release[0][TRIANGLE_BTN]) { pending_release[0][TRIANGLE_BTN] = 0; return true; }
+			return false;
+		case 27: case 80:
+			if (pending_release[0][START_BTN]) { pending_release[0][START_BTN] = 0; return true; }
+			return false;
+		case 9:
+			if (pending_release[0][SELECT_BTN]) { pending_release[0][SELECT_BTN] = 0; return true; }
+			return false;
+		default:
+			return false;
+	}
+}
+
+static void gml_keyboard_check(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	ret->kind = VALUE_REAL;
+	int k = (argc > 0) ? get_rvalue_int(args, 0) : 1;
+	ret->rvalue.val = is_key_down_synthetic(k) ? 1.0f : 0.0f;
+}
+
+static void gml_keyboard_check_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	ret->kind = VALUE_REAL;
+	int k = (argc > 0) ? get_rvalue_int(args, 0) : 1;
+	ret->rvalue.val = is_key_pressed_synthetic(k) ? 1.0f : 0.0f;
+}
+
+static void gml_keyboard_check_released(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	ret->kind = VALUE_REAL;
+	int k = (argc > 0) ? get_rvalue_int(args, 0) : 1;
+	ret->rvalue.val = is_key_released_synthetic(k) ? 1.0f : 0.0f;
+}
+
+static void gml_mouse_check_button(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	ret->kind = VALUE_REAL;
+	int b = (argc > 0) ? get_rvalue_int(args, 0) : 1;
+	if (b == 1 || b == -1) {
+		ret->rvalue.val = (raw_btn_down[0][R1_BTN] || raw_btn_down[0][R2_BTN]) ? 1.0f : 0.0f;
+	} else {
+		ret->rvalue.val = 0.0f;
+	}
+}
+
+static void gml_mouse_check_button_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	ret->kind = VALUE_REAL;
+	int b = (argc > 0) ? get_rvalue_int(args, 0) : 1;
+	if (b == 1 || b == -1) {
+		if (pending_press[0][R1_BTN]) { pending_press[0][R1_BTN] = 0; ret->rvalue.val = 1.0f; return; }
+		if (pending_press[0][R2_BTN]) { pending_press[0][R2_BTN] = 0; ret->rvalue.val = 1.0f; return; }
+		ret->rvalue.val = 0.0f;
+	} else {
+		ret->rvalue.val = 0.0f;
+	}
+}
+
+static void gml_mouse_check_button_released(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	ret->kind = VALUE_REAL;
+	int b = (argc > 0) ? get_rvalue_int(args, 0) : 1;
+	if (b == 1 || b == -1) {
+		if (pending_release[0][R1_BTN]) { pending_release[0][R1_BTN] = 0; ret->rvalue.val = 1.0f; return; }
+		if (pending_release[0][R2_BTN]) { pending_release[0][R2_BTN] = 0; ret->rvalue.val = 1.0f; return; }
+		ret->rvalue.val = 0.0f;
+	} else {
+		ret->rvalue.val = 0.0f;
+	}
+}
+
 void mouse_set(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
 	*g_MousePosX = YYGetInt32(args, 0);
     *g_MousePosY = YYGetInt32(args, 1);
@@ -703,7 +878,13 @@ void patch_gamepad(const char *game_name) {
 	Function_Add("display_mouse_get_y", (intptr_t)mouse_get_y, 1, 0);
 	Function_Add("window_mouse_get_x", (intptr_t)mouse_get_x, 1, 0);
 	Function_Add("window_mouse_get_y", (intptr_t)mouse_get_y, 1, 0);
-	Function_Add("keyboard_check_pressed", (intptr_t)keyboard_check_pressed, 1, 0);
+	Function_Add("keyboard_check", (intptr_t)gml_keyboard_check, 1, 0);
+	Function_Add("keyboard_check_pressed", (intptr_t)gml_keyboard_check_pressed, 1, 0);
+	Function_Add("keyboard_check_released", (intptr_t)gml_keyboard_check_released, 1, 0);
+	Function_Add("keyboard_check_direct", (intptr_t)gml_keyboard_check, 1, 0);
+	Function_Add("mouse_check_button", (intptr_t)gml_mouse_check_button, 1, 0);
+	Function_Add("mouse_check_button_pressed", (intptr_t)gml_mouse_check_button_pressed, 1, 0);
+	Function_Add("mouse_check_button_released", (intptr_t)gml_mouse_check_button_released, 1, 0);
 	
 #ifdef STANDALONE_MODE
 	FILE *f = fopen("app0:keys.ini", "r");
