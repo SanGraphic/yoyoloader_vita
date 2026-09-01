@@ -86,16 +86,6 @@ void profiler_tick_frame(void) {
 			prof_frame_count, total_draws, prof_draw_arrays_count / 60, prof_draw_elements_count / 60,
 			tex_binds, prog_switches, uniforms, pad_checks, kb_checks, mouse_checks, al_calls);
 
-		if (!prof_log_file) {
-			prof_log_file = fopen("ux0:data/gms/shared/profiler.log", "a");
-		}
-		if (prof_log_file) {
-			fprintf(prof_log_file, "[TELEMETRY] Frame %u | Draws/f: %u (Arr:%u, Elem:%u) | TexBinds/f: %u | Shaders/f: %u | MatUploads/f: %u | Pad/f: %u | KB/f: %u | Mouse/f: %u | AL/sec: %u\n",
-				prof_frame_count, total_draws, prof_draw_arrays_count / 60, prof_draw_elements_count / 60,
-				tex_binds, prog_switches, uniforms, pad_checks, kb_checks, mouse_checks, al_calls);
-			fflush(prof_log_file);
-		}
-
 		prof_draw_arrays_count = 0;
 		prof_draw_elements_count = 0;
 		prof_bind_texture_count = 0;

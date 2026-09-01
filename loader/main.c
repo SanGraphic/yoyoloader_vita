@@ -204,7 +204,8 @@ int file_exists(const char *path) {
 	return sceIoGetstat(path, &stat) >= 0;
 }
 
-#if 1
+static SceUID g_debug_log_fd = -1;
+
 int debugPrintf(char *text, ...) {
 	if (!debugMode)
 		return 0;
@@ -213,18 +214,18 @@ int debugPrintf(char *text, ...) {
 	static char string[0x8000];
 
 	va_start(list, text);
-	vsprintf(string, text, list);
+	vsnprintf(string, sizeof(string), text, list);
 	va_end(list);
 
-	SceUID fd = sceIoOpen("ux0:data/gms/shared/yyl.log", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND, 0777);
-	if (fd >= 0) {
-		sceIoWrite(fd, string, strlen(string));
-		sceIoClose(fd);
+	if (g_debug_log_fd < 0) {
+		g_debug_log_fd = sceIoOpen("ux0:data/gms/shared/yyl.log", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND, 0777);
+	}
+	if (g_debug_log_fd >= 0) {
+		sceIoWrite(g_debug_log_fd, string, strlen(string));
 	}
 
 	return 0;
 }
-#endif
 
 struct android_dirent {
 	char pad[18];
