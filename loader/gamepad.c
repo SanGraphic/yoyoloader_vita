@@ -320,6 +320,7 @@ static int touch_pressed = 0;
 static int gh_step_tick_count = 0;
 
 void gamepad_button_check(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	prof_gml_pad_count++;
 	ret->kind = VALUE_REAL;
 	int id = get_rvalue_int(args, 0);
 	int btn = translate_button(args, 1);
@@ -333,6 +334,7 @@ void gamepad_button_check(retval_t *ret, void *self, void *other, int argc, retv
 }
 
 void gamepad_button_check_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	prof_gml_pad_count++;
 	ret->kind = VALUE_REAL;
 	int id = get_rvalue_int(args, 0);
 	int btn = translate_button(args, 1);
@@ -346,6 +348,7 @@ void gamepad_button_check_pressed(retval_t *ret, void *self, void *other, int ar
 }
 
 void gamepad_button_check_released(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	prof_gml_pad_count++;
 	ret->kind = VALUE_REAL;
 	int id = get_rvalue_int(args, 0);
 	int btn = translate_button(args, 1);
@@ -425,24 +428,28 @@ static bool is_key_released_synthetic(int k) {
 }
 
 static void gml_keyboard_check(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	prof_gml_kb_count++;
 	ret->kind = VALUE_REAL;
 	int k = (argc > 0) ? get_rvalue_int(args, 0) : 1;
 	ret->rvalue.val = is_key_down_synthetic(k) ? 1.0f : 0.0f;
 }
 
 static void gml_keyboard_check_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	prof_gml_kb_count++;
 	ret->kind = VALUE_REAL;
 	int k = (argc > 0) ? get_rvalue_int(args, 0) : 1;
 	ret->rvalue.val = is_key_pressed_synthetic(k) ? 1.0f : 0.0f;
 }
 
 static void gml_keyboard_check_released(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	prof_gml_kb_count++;
 	ret->kind = VALUE_REAL;
 	int k = (argc > 0) ? get_rvalue_int(args, 0) : 1;
 	ret->rvalue.val = is_key_released_synthetic(k) ? 1.0f : 0.0f;
 }
 
 static void gml_mouse_check_button(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	prof_gml_mouse_count++;
 	ret->kind = VALUE_REAL;
 	int b = (argc > 0) ? get_rvalue_int(args, 0) : 1;
 	if (b == 1 || b == -1) {
@@ -453,6 +460,7 @@ static void gml_mouse_check_button(retval_t *ret, void *self, void *other, int a
 }
 
 static void gml_mouse_check_button_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	prof_gml_mouse_count++;
 	ret->kind = VALUE_REAL;
 	int b = (argc > 0) ? get_rvalue_int(args, 0) : 1;
 	if (b == 1 || b == -1) {
@@ -463,6 +471,7 @@ static void gml_mouse_check_button_pressed(retval_t *ret, void *self, void *othe
 }
 
 static void gml_mouse_check_button_released(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
+	prof_gml_mouse_count++;
 	ret->kind = VALUE_REAL;
 	int b = (argc > 0) ? get_rvalue_int(args, 0) : 1;
 	if (b == 1 || b == -1) {
@@ -509,8 +518,14 @@ void map_key(int key, const char *val) {
 void map_analog(int idx, const char *val) {
 }
 
+extern void profiler_tick_frame(void);
+extern uint32_t prof_gml_kb_count;
+extern uint32_t prof_gml_mouse_count;
+extern uint32_t prof_gml_pad_count;
+
 void IO_Update() {
 	gh_step_tick_count++;
+	profiler_tick_frame();
 
 	IO_UpdateM();
 	GamepadUpdateM();
