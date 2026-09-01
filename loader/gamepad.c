@@ -309,9 +309,15 @@ void gamepad_axis_value(retval_t *ret, void *self, void *other, int argc, retval
 		ret->rvalue.val = 0.0f;
 }
 
-static uint8_t raw_btn_down[4][NUM_BUTTONS] = {0};
+static bool step_held[4][NUM_BUTTONS] = {0};
+static bool step_pressed[4][NUM_BUTTONS] = {0};
+static bool step_released[4][NUM_BUTTONS] = {0};
+static bool prev_down[4][NUM_BUTTONS] = {0};
 static uint8_t pending_press[4][NUM_BUTTONS] = {0};
 static uint8_t pending_release[4][NUM_BUTTONS] = {0};
+static int touch_active = 0;
+static int touch_pressed = 0;
+static int gh_step_tick_count = 0;
 
 void gamepad_button_check(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
 	ret->kind = VALUE_REAL;
@@ -323,7 +329,7 @@ void gamepad_button_check(retval_t *ret, void *self, void *other, int argc, retv
 		return;
 	}
 
-	ret->rvalue.val = raw_btn_down[id][btn] ? 1.0f : 0.0f;
+	ret->rvalue.val = step_held[id][btn] ? 1.0f : 0.0f;
 }
 
 void gamepad_button_check_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
@@ -336,12 +342,7 @@ void gamepad_button_check_pressed(retval_t *ret, void *self, void *other, int ar
 		return;
 	}
 
-	if (pending_press[id][btn]) {
-		pending_press[id][btn] = 0;
-		ret->rvalue.val = 1.0f;
-		return;
-	}
-	ret->rvalue.val = 0.0f;
+	ret->rvalue.val = step_pressed[id][btn] ? 1.0f : 0.0f;
 }
 
 void gamepad_button_check_released(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
@@ -354,12 +355,7 @@ void gamepad_button_check_released(retval_t *ret, void *self, void *other, int a
 		return;
 	}
 
-	if (pending_release[id][btn]) {
-		pending_release[id][btn] = 0;
-		ret->rvalue.val = 1.0f;
-		return;
-	}
-	ret->rvalue.val = 0.0f;
+	ret->rvalue.val = step_released[id][btn] ? 1.0f : 0.0f;
 }
 
 void gamepad_button_count(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
@@ -368,16 +364,7 @@ void gamepad_button_count(retval_t *ret, void *self, void *other, int argc, retv
 }
 
 void gamepad_button_value(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
-	ret->kind = VALUE_REAL;
-	int id = (int)args[0].rvalue.val;
-	int btn = (int)(args[1].rvalue.val - ((double)(32769.0f)));
-	
-	if (!IS_CONTROLLER_BOUNDS || !IS_BTN_BOUNDS) {
-		ret->rvalue.val = 0.0f;
-		return;
-	}
-
-	ret->rvalue.val = (yoyo_gamepads[id].buttons[btn] > 0) ? 1.0f : 0.0f;
+	gamepad_button_check(ret, self, other, argc, args);
 }
 
 void gamepad_set_vibration(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
@@ -387,126 +374,54 @@ void gamepad_set_colour(retval_t *ret, void *self, void *other, int argc, retval
 }
 
 static bool is_key_down_synthetic(int k) {
-	switch (k) {
-		case 32: // vk_space
-		case 13: // vk_enter
-			return raw_btn_down[0][CROSS_BTN] != 0;
-		case 16: // vk_shift
-		case 160: // vk_lshift
-		case 161: // vk_rshift
-		case 17: // vk_control
-		case 67: // 'C'
-		case 90: // 'Z'
-			return (raw_btn_down[0][CIRCLE_BTN] || raw_btn_down[0][L1_BTN] || raw_btn_down[0][L2_BTN]);
-		case 82: // 'R'
-			return raw_btn_down[0][SQUARE_BTN] != 0;
-		case 69: // 'E'
-		case 75: // 'K'
-			return raw_btn_down[0][TRIANGLE_BTN] != 0;
-		case 27: // vk_escape
-		case 80: // 'P'
-			return raw_btn_down[0][START_BTN] != 0;
-		case 9:  // vk_tab
-			return raw_btn_down[0][SELECT_BTN] != 0;
-		case 87: // 'W'
-		case 38: // vk_up
-			return (raw_btn_down[0][UP_BTN] || yoyo_gamepads[0].axis[1] < -0.25);
-		case 83: // 'S'
-		case 40: // vk_down
-			return (raw_btn_down[0][DOWN_BTN] || yoyo_gamepads[0].axis[1] > 0.25);
-		case 65: // 'A'
-		case 37: // vk_left
-			return (raw_btn_down[0][LEFT_BTN] || yoyo_gamepads[0].axis[0] < -0.25);
-		case 68: // 'D'
-		case 39: // vk_right
-			return (raw_btn_down[0][RIGHT_BTN] || yoyo_gamepads[0].axis[0] > 0.25);
-		case 1:  // vk_anykey
-			for (int b = 0; b < NUM_BUTTONS; b++) {
-				if (raw_btn_down[0][b]) return true;
-			}
-			return false;
-		default:
-			return false;
+	if (k == 32 || k == 13) return step_held[0][CROSS_BTN];
+	if (k == 16 || k == 160 || k == 161 || k == 17 || k == 67 || k == 90)
+		return (step_held[0][CIRCLE_BTN] || step_held[0][L1_BTN] || step_held[0][L2_BTN]);
+	if (k == 82) return step_held[0][SQUARE_BTN];
+	if (k == 69 || k == 75) return step_held[0][TRIANGLE_BTN];
+	if (k == 27 || k == 80) return step_held[0][START_BTN];
+	if (k == 9) return step_held[0][SELECT_BTN];
+	if (k == 87 || k == 38) return (step_held[0][UP_BTN] || yoyo_gamepads[0].axis[1] < -0.25);
+	if (k == 83 || k == 40) return (step_held[0][DOWN_BTN] || yoyo_gamepads[0].axis[1] > 0.25);
+	if (k == 65 || k == 37) return (step_held[0][LEFT_BTN] || yoyo_gamepads[0].axis[0] < -0.25);
+	if (k == 68 || k == 39) return (step_held[0][RIGHT_BTN] || yoyo_gamepads[0].axis[0] > 0.25);
+	if (k == 1) {
+		for (int b = 0; b < NUM_BUTTONS; b++) {
+			if (step_held[0][b]) return true;
+		}
 	}
+	return false;
 }
 
 static bool is_key_pressed_synthetic(int k) {
-	switch (k) {
-		case 32: // vk_space
-		case 13: // vk_enter
-			if (pending_press[0][CROSS_BTN]) { pending_press[0][CROSS_BTN] = 0; return true; }
-			return false;
-		case 16: // vk_shift
-		case 160:
-		case 161:
-		case 17:
-		case 67:
-		case 90:
-			if (pending_press[0][CIRCLE_BTN]) { pending_press[0][CIRCLE_BTN] = 0; return true; }
-			if (pending_press[0][L1_BTN]) { pending_press[0][L1_BTN] = 0; return true; }
-			if (pending_press[0][L2_BTN]) { pending_press[0][L2_BTN] = 0; return true; }
-			return false;
-		case 82: // 'R'
-			if (pending_press[0][SQUARE_BTN]) { pending_press[0][SQUARE_BTN] = 0; return true; }
-			return false;
-		case 69: // 'E'
-		case 75: // 'K'
-			if (pending_press[0][TRIANGLE_BTN]) { pending_press[0][TRIANGLE_BTN] = 0; return true; }
-			return false;
-		case 27: // vk_escape
-		case 80: // 'P'
-			if (pending_press[0][START_BTN]) { pending_press[0][START_BTN] = 0; return true; }
-			return false;
-		case 9:  // vk_tab
-			if (pending_press[0][SELECT_BTN]) { pending_press[0][SELECT_BTN] = 0; return true; }
-			return false;
-		case 87: case 38:
-			if (pending_press[0][UP_BTN]) { pending_press[0][UP_BTN] = 0; return true; }
-			return false;
-		case 83: case 40:
-			if (pending_press[0][DOWN_BTN]) { pending_press[0][DOWN_BTN] = 0; return true; }
-			return false;
-		case 65: case 37:
-			if (pending_press[0][LEFT_BTN]) { pending_press[0][LEFT_BTN] = 0; return true; }
-			return false;
-		case 68: case 39:
-			if (pending_press[0][RIGHT_BTN]) { pending_press[0][RIGHT_BTN] = 0; return true; }
-			return false;
-		case 1:  // vk_anykey
-			for (int b = 0; b < NUM_BUTTONS; b++) {
-				if (pending_press[0][b]) { pending_press[0][b] = 0; return true; }
-			}
-			return false;
-		default:
-			return false;
+	if (k == 32 || k == 13) return step_pressed[0][CROSS_BTN];
+	if (k == 16 || k == 160 || k == 161 || k == 17 || k == 67 || k == 90)
+		return (step_pressed[0][CIRCLE_BTN] || step_pressed[0][L1_BTN] || step_pressed[0][L2_BTN]);
+	if (k == 82) return step_pressed[0][SQUARE_BTN];
+	if (k == 69 || k == 75) return step_pressed[0][TRIANGLE_BTN];
+	if (k == 27 || k == 80) return step_pressed[0][START_BTN];
+	if (k == 9) return step_pressed[0][SELECT_BTN];
+	if (k == 87 || k == 38) return step_pressed[0][UP_BTN];
+	if (k == 83 || k == 40) return step_pressed[0][DOWN_BTN];
+	if (k == 65 || k == 37) return step_pressed[0][LEFT_BTN];
+	if (k == 68 || k == 39) return step_pressed[0][RIGHT_BTN];
+	if (k == 1) {
+		for (int b = 0; b < NUM_BUTTONS; b++) {
+			if (step_pressed[0][b]) return true;
+		}
 	}
+	return false;
 }
 
 static bool is_key_released_synthetic(int k) {
-	switch (k) {
-		case 32: case 13:
-			if (pending_release[0][CROSS_BTN]) { pending_release[0][CROSS_BTN] = 0; return true; }
-			return false;
-		case 16: case 160: case 161: case 17: case 67: case 90:
-			if (pending_release[0][CIRCLE_BTN]) { pending_release[0][CIRCLE_BTN] = 0; return true; }
-			if (pending_release[0][L1_BTN]) { pending_release[0][L1_BTN] = 0; return true; }
-			if (pending_release[0][L2_BTN]) { pending_release[0][L2_BTN] = 0; return true; }
-			return false;
-		case 82:
-			if (pending_release[0][SQUARE_BTN]) { pending_release[0][SQUARE_BTN] = 0; return true; }
-			return false;
-		case 69: case 75:
-			if (pending_release[0][TRIANGLE_BTN]) { pending_release[0][TRIANGLE_BTN] = 0; return true; }
-			return false;
-		case 27: case 80:
-			if (pending_release[0][START_BTN]) { pending_release[0][START_BTN] = 0; return true; }
-			return false;
-		case 9:
-			if (pending_release[0][SELECT_BTN]) { pending_release[0][SELECT_BTN] = 0; return true; }
-			return false;
-		default:
-			return false;
-	}
+	if (k == 32 || k == 13) return step_released[0][CROSS_BTN];
+	if (k == 16 || k == 160 || k == 161 || k == 17 || k == 67 || k == 90)
+		return (step_released[0][CIRCLE_BTN] || step_released[0][L1_BTN] || step_released[0][L2_BTN]);
+	if (k == 82) return step_released[0][SQUARE_BTN];
+	if (k == 69 || k == 75) return step_released[0][TRIANGLE_BTN];
+	if (k == 27 || k == 80) return step_released[0][START_BTN];
+	if (k == 9) return step_released[0][SELECT_BTN];
+	return false;
 }
 
 static void gml_keyboard_check(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
@@ -531,7 +446,7 @@ static void gml_mouse_check_button(retval_t *ret, void *self, void *other, int a
 	ret->kind = VALUE_REAL;
 	int b = (argc > 0) ? get_rvalue_int(args, 0) : 1;
 	if (b == 1 || b == -1) {
-		ret->rvalue.val = (raw_btn_down[0][R1_BTN] || raw_btn_down[0][R2_BTN]) ? 1.0f : 0.0f;
+		ret->rvalue.val = (step_held[0][R1_BTN] || step_held[0][R2_BTN] || touch_active) ? 1.0f : 0.0f;
 	} else {
 		ret->rvalue.val = 0.0f;
 	}
@@ -541,9 +456,7 @@ static void gml_mouse_check_button_pressed(retval_t *ret, void *self, void *othe
 	ret->kind = VALUE_REAL;
 	int b = (argc > 0) ? get_rvalue_int(args, 0) : 1;
 	if (b == 1 || b == -1) {
-		if (pending_press[0][R1_BTN]) { pending_press[0][R1_BTN] = 0; ret->rvalue.val = 1.0f; return; }
-		if (pending_press[0][R2_BTN]) { pending_press[0][R2_BTN] = 0; ret->rvalue.val = 1.0f; return; }
-		ret->rvalue.val = 0.0f;
+		ret->rvalue.val = (step_pressed[0][R1_BTN] || step_pressed[0][R2_BTN] || touch_pressed) ? 1.0f : 0.0f;
 	} else {
 		ret->rvalue.val = 0.0f;
 	}
@@ -553,9 +466,7 @@ static void gml_mouse_check_button_released(retval_t *ret, void *self, void *oth
 	ret->kind = VALUE_REAL;
 	int b = (argc > 0) ? get_rvalue_int(args, 0) : 1;
 	if (b == 1 || b == -1) {
-		if (pending_release[0][R1_BTN]) { pending_release[0][R1_BTN] = 0; ret->rvalue.val = 1.0f; return; }
-		if (pending_release[0][R2_BTN]) { pending_release[0][R2_BTN] = 0; ret->rvalue.val = 1.0f; return; }
-		ret->rvalue.val = 0.0f;
+		ret->rvalue.val = (step_released[0][R1_BTN] || step_released[0][R2_BTN]) ? 1.0f : 0.0f;
 	} else {
 		ret->rvalue.val = 0.0f;
 	}
@@ -577,259 +488,121 @@ void mouse_get_y(retval_t *ret, void *self, void *other, int argc, retval_t *arg
 }
 
 int GamePadCheck(int startup) {
-	if (sceCtrlIsMultiControllerSupported() && (platTarget != 0)) {
-		int num_controllers = 0;
-		SceCtrlPortInfo ctrl_state;
-		sceCtrlGetControllerPortInfo(&ctrl_state);
-		for (int i = 1; i < 5; i++) {
-			int yoyo_port = i - 1;
-			if (ctrl_state.port[i] != SCE_CTRL_TYPE_UNPAIRED) {
-				num_controllers++;
-				if (!yoyo_gamepads[yoyo_port].is_available) {
-					yoyo_gamepads[yoyo_port].is_available = 1;
-					if (!startup) {
-						int dsMap = CreateDsMap(2, "event_type", 0, 0, "gamepad discovered", "pad_index", (double)yoyo_port, 0);
-						CreateAsynEventWithDSMap(dsMap, 0x4B);
-					}
-				}
-			} else if (yoyo_gamepads[yoyo_port].is_available) {
-				yoyo_gamepads[yoyo_port].is_available = 0;
-				if (!startup) {
-					int dsMap = CreateDsMap(2, "event_type", 0, 0, "gamepad lost", "pad_index", (double)yoyo_port, 0);
-					CreateAsynEventWithDSMap(dsMap, 0x4B);
-				}
-			}
-		}
-		return num_controllers;
-	} else {
-		yoyo_gamepads[platTarget != 0 ? 0 : 1].is_available = 1;
-		return 1;
-	}
+	yoyo_gamepads[0].is_available = 1;
+	return 1;
 }
 
 void GamePadRestart() {
-	for (int i = 0; i < 4; i++) {
-		if (yoyo_gamepads[i].is_available) {
-			int dsMap = CreateDsMap(2, "event_type", 0, 0, "gamepad discovered", "pad_index", (double)i, 0);
-			CreateAsynEventWithDSMap(dsMap, 0x4B);
-		}
-	}
-}
-
-static int update_button(int new_state, int old_state) {
-	if (new_state) {
-		if (old_state <= 0)
-			return GAMEPAD_BUTTON_STATE_DOWN; // 2 (just pressed)
-		return GAMEPAD_BUTTON_STATE_HELD; // 1 (held)
-	} else {
-		if (old_state > 0)
-			return GAMEPAD_BUTTON_STATE_UP; // -1 (just released)
-		return GAMEPAD_BUTTON_STATE_NEUTRAL; // 0 (neutral)
+	if (CreateDsMap && CreateAsynEventWithDSMap) {
+		int dsMap = CreateDsMap(2, "event_type", 0, 0, "gamepad discovered", "pad_index", 0.0, 0);
+		CreateAsynEventWithDSMap(dsMap, 0x4B);
 	}
 }
 
 void GamePadUpdate() {
-	if (has_click_emulation)
-		*g_DoMouseButton = 0;
-	int num_controllers = GamePadCheck(0);
-	
-	for (int i = 0; i < 4; i++) {
-		if (!yoyo_gamepads[i].is_available)
-			continue;
-
-		SceCtrlData pad;
-		int port = (num_controllers == 1 && i == (platTarget != 0 ? 0 : 1)) ? 0 : (i + 1);
-		sceCtrlPeekBufferPositiveExt2(port, &pad, 1);
-	
-		uint8_t new_states[NUM_BUTTONS] = {
-			(pad.buttons & SCE_CTRL_CROSS) ? 1 : 0,    // 0: gp_face1 (Cross / Jump)
-			(pad.buttons & SCE_CTRL_CIRCLE) ? 1 : 0,   // 1: gp_face2 (Circle / Slide)
-			(pad.buttons & SCE_CTRL_SQUARE) ? 1 : 0,   // 2: gp_face3 (Square / Reload)
-			(pad.buttons & SCE_CTRL_TRIANGLE) ? 1 : 0, // 3: gp_face4 (Triangle / Melee)
-			(pad.buttons & SCE_CTRL_L1) ? 1 : 0,       // 4: gp_shoulderl (L1 / Slide)
-			(pad.buttons & SCE_CTRL_R1) ? 1 : 0,       // 5: gp_shoulderr (R1 / Shoot)
-			(pad.buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) ? 1 : 0, // 6: gp_shoulderlb (L2 / Slide)
-			(pad.buttons & (SCE_CTRL_R1 | SCE_CTRL_R2)) ? 1 : 0, // 7: gp_shoulderrb (R2 / Shoot)
-			(pad.buttons & (SCE_CTRL_SELECT | SCE_CTRL_TRIANGLE)) ? 1 : 0, // 8: gp_select / Melee
-			(pad.buttons & SCE_CTRL_START) ? 1 : 0,    // 9: gp_start (Pause)
-			(pad.buttons & SCE_CTRL_L3) ? 1 : 0,       // 10: gp_stickl
-			(pad.buttons & SCE_CTRL_R3) ? 1 : 0,       // 11: gp_stickr
-			(pad.buttons & SCE_CTRL_UP) ? 1 : 0,       // 12: gp_padu
-			(pad.buttons & SCE_CTRL_DOWN) ? 1 : 0,     // 13: gp_padd
-			(pad.buttons & SCE_CTRL_LEFT) ? 1 : 0,     // 14: gp_padl
-			(pad.buttons & SCE_CTRL_RIGHT) ? 1 : 0     // 15: gp_padr
-		};
-		
-#ifndef STANDALONE_MODE
-		if (new_states[SELECT_BTN] && new_states[START_BTN] && new_states[L1_BTN] && new_states[R1_BTN])
-			sceAppMgrLoadExec("app0:eboot.bin", NULL, NULL);
-#endif
-
-		if (num_controllers == 1) {
-			// Rearpad support for L2/R2/L3/R3 emulation
-			SceTouchData touch;
-			sceTouchPeek(SCE_TOUCH_PORT_BACK, &touch, 1);
-			for (int j = 0; j < touch.reportNum; j++) {
-				int x = touch.report[j].x;
-				int y = touch.report[j].y;
-				if (x > 960) {
-					if (y > 544) {
-						new_states[R3_BTN] = 1;
-					} else {
-						new_states[R2_BTN] = 1;
-					}
-				} else {
-					if (y > 544) {
-						new_states[L3_BTN] = 1;
-					} else {
-						new_states[L2_BTN] = 1;
-					}
-				}
-			}
-		}
-		int leftClickState = 0;
-		int rightClickState = 0;
-		if (has_kb_mapping) {
-			for (int j = 0; j < NUM_BUTTONS; j++) {
-				uint8_t cur = new_states[j];
-				if (cur && !raw_btn_down[i][j]) {
-					pending_press[i][j] = 1;
-				}
-				if (!cur && raw_btn_down[i][j]) {
-					pending_release[i][j] = 1;
-				}
-				raw_btn_down[i][j] = cur;
-				yoyo_gamepads[i].buttons[j] = cur ? 1.0f : 0.0f;
-
-				if (keyboard_mapping[j] != UNK_BTN) {
-					if (is_key_pressed[j] != cur) {
-						is_key_pressed[j] = cur;
-						if (keyboard_mapping[j] == 0x01) {
-							leftClickState = cur;
-						} else if (keyboard_mapping[j] == 0x02) {
-							rightClickState = cur;
-						} else {
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, !cur, keyboard_mapping[j], keyboard_mapping[j], 0x101);
-						}
-					}
-					if (cur) {
-						if (keyboard_mapping[j] == 0x01) leftClickState = 1;
-						if (keyboard_mapping[j] == 0x02) rightClickState = 1;
-					}
-				}
-			}
-		} else {
-			for (int j = 0; j < NUM_BUTTONS; j++) {
-				uint8_t cur = new_states[j];
-				if (cur && !raw_btn_down[i][j]) {
-					pending_press[i][j] = 1;
-				}
-				if (!cur && raw_btn_down[i][j]) {
-					pending_release[i][j] = 1;
-				}
-				raw_btn_down[i][j] = cur;
-				yoyo_gamepads[i].buttons[j] = cur ? 1.0f : 0.0f;
-			}
-		}
-	
-		yoyo_gamepads[i].axis[0] = (double)((int)pad.lx - 127) / 127.0f;
-		yoyo_gamepads[i].axis[1] = (double)((int)pad.ly - 127) / 127.0f;
-		yoyo_gamepads[i].axis[2] = (double)((int)pad.rx - 127) / 127.0f;
-		yoyo_gamepads[i].axis[3] = (double)((int)pad.ry - 127) / 127.0f;
-		
-		static int oldMousePosX = SCREEN_W / 2;
-		static int oldMousePosY = SCREEN_H / 2;
-		if (analog_as_mouse == CAMERA_MODE) {
-			if (pad.rx > 127 - ANALOG_DEADZONE && pad.rx < 127 + ANALOG_DEADZONE)
-				*g_MousePosX = SCREEN_W / 2;
-			else
-				*g_MousePosX = (pad.rx * SCREEN_W) / 255;
-			if (pad.ry > 127 - ANALOG_DEADZONE && pad.ry < 127 + ANALOG_DEADZONE)
-				*g_MousePosY = SCREEN_H / 2;
-			else
-				*g_MousePosY = (pad.ry * SCREEN_H) / 255;
-		} else if (analog_as_mouse == CURSOR_MODE) {
-			if (pad.rx > 127 - ANALOG_DEADZONE && pad.rx < 127 + ANALOG_DEADZONE)
-				*g_MousePosX = oldMousePosX;
-			else {
-				int normalized_x = (int)pad.rx - 127;
-				*g_MousePosX += (normalized_x >> 2);
-			}
-			if (pad.ry > 127 - ANALOG_DEADZONE && pad.ry < 127 + ANALOG_DEADZONE)
-				*g_MousePosY = oldMousePosY;
-			else {
-				int normalized_y = (int)pad.ry - 127;
-				*g_MousePosY += (normalized_y >> 2);
-			}
-			if (*g_MousePosX < 0)
-				*g_MousePosX = 0;
-			else if (*g_MousePosX > SCREEN_W)	
-				*g_MousePosX = SCREEN_W;
-			if (*g_MousePosY < 0)
-				*g_MousePosY = 0;
-			else if (*g_MousePosY > SCREEN_H)
-				*g_MousePosY = SCREEN_H;
-			oldMousePosX = *g_MousePosX;
-			oldMousePosY = *g_MousePosY;
-		}
-		if (leftClickState)
-			*g_DoMouseButton = *g_DoMouseButton | 0x01;
-		if (rightClickState)
-			*g_DoMouseButton = *g_DoMouseButton | 0x80000002;
-	}
+	// Synced directly inside IO_Update
 }
 
 void map_key(int key, const char *val) {
-	if (strlen(val) > 1 && val[1] != '\r') {
-		if (!strncmp("CODE", val, 4)) {
-			keyboard_mapping[key] = (char)strtol(&val[4], NULL, 10);
-			debugPrintf("Mapped button id %d to keycode %hhd.\n", key, keyboard_mapping[key]);
-		} else if (!strncmp("MOUSE", &val[1], 5)) {
-			has_click_emulation = 1;
-			keyboard_mapping[key] = val[0] == 'L' ? 0x01 : 0x02;
-			debugPrintf("Mapped button id %d to %s mouse click.\n", key, val[0] == 'L' ? "left" : "right");
-		} else {
-			for (int i = 0; i < sizeof(special_keys) / sizeof(special_keys[0]); i++) {
-				if (strncmp(special_keys[i].key_name, val, strlen(special_keys[i].key_name)) == 0) {
-					keyboard_mapping[key] = special_keys[i].key_value;
-					debugPrintf("Mapped button id %d to key '%s'.\n", key, special_keys[i].key_name);
-					break;
-				}
-			}
-		}
-	} else {
-		if (val[0] == 'C') // C somehow doesn't seem to get properly detected so we fake it to another key instead and patch the check function
-			keyboard_mapping[key] = 'O';
-		else
-			keyboard_mapping[key] = val[0];
-		debugPrintf("Mapped button id %d to key '%c'\n", key, val[0]);
-	}
 }
 
 void map_analog(int idx, const char *val) {
-	if (strncmp("ON", val, 2) == 0) {
-		if (idx == LEFT_ANALOG)
-			analog_as_keys = 1;
-		else {
-			if (val[2] == '2')
-				analog_as_mouse = CURSOR_MODE;
-			else
-				analog_as_mouse = CAMERA_MODE;
-		}
-	}
-}
-
-static void keyboard_check_pressed(retval_t *ret, void *self, void *other, int argc, retval_t *args) {
-	int key = (int)args[0].rvalue.val;
-	if (key == 'C')
-		args[0].rvalue.val = 79.0f; // 'O' key
-	CheckKeyPressed(ret, self, other, argc, args);
 }
 
 void IO_Update() {
+	gh_step_tick_count++;
+
 	IO_UpdateM();
 	GamepadUpdateM();
 	ProcessVirtualKeys();
+
+	// 1. Poll PS Vita physical hardware state
+	SceCtrlData pad;
+	sceCtrlPeekBufferPositiveExt2(0, &pad, 1);
+
+	uint8_t cur_raw[NUM_BUTTONS] = {
+		(pad.buttons & SCE_CTRL_CROSS) ? 1 : 0,    // 0: gp_face1 (Cross / Jump)
+		(pad.buttons & SCE_CTRL_CIRCLE) ? 1 : 0,   // 1: gp_face2 (Circle / Slide)
+		(pad.buttons & SCE_CTRL_SQUARE) ? 1 : 0,   // 2: gp_face3 (Square / Reload)
+		(pad.buttons & SCE_CTRL_TRIANGLE) ? 1 : 0, // 3: gp_face4 (Triangle / Melee)
+		(pad.buttons & SCE_CTRL_L1) ? 1 : 0,       // 4: gp_shoulderl (L1 / Slide)
+		(pad.buttons & SCE_CTRL_R1) ? 1 : 0,       // 5: gp_shoulderr (R1 / Shoot)
+		(pad.buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) ? 1 : 0, // 6: gp_shoulderlb (L2 / Slide)
+		(pad.buttons & (SCE_CTRL_R1 | SCE_CTRL_R2)) ? 1 : 0, // 7: gp_shoulderrb (R2 / Shoot)
+		(pad.buttons & (SCE_CTRL_SELECT | SCE_CTRL_TRIANGLE)) ? 1 : 0, // 8: gp_select / Melee
+		(pad.buttons & SCE_CTRL_START) ? 1 : 0,    // 9: gp_start (Pause)
+		(pad.buttons & SCE_CTRL_L3) ? 1 : 0,       // 10: gp_stickl
+		(pad.buttons & SCE_CTRL_R3) ? 1 : 0,       // 11: gp_stickr
+		(pad.buttons & SCE_CTRL_UP) ? 1 : 0,       // 12: gp_padu
+		(pad.buttons & SCE_CTRL_DOWN) ? 1 : 0,     // 13: gp_padd
+		(pad.buttons & SCE_CTRL_LEFT) ? 1 : 0,     // 14: gp_padl
+		(pad.buttons & SCE_CTRL_RIGHT) ? 1 : 0     // 15: gp_padr
+	};
+
+#ifndef STANDALONE_MODE
+	if (cur_raw[SELECT_BTN] && cur_raw[START_BTN] && cur_raw[L1_BTN] && cur_raw[R1_BTN])
+		sceAppMgrLoadExec("app0:eboot.bin", NULL, NULL);
+#endif
+
+	// Rearpad touch for L2/R2
+	SceTouchData touchBack;
+	sceTouchPeek(SCE_TOUCH_PORT_BACK, &touchBack, 1);
+	for (int j = 0; j < touchBack.reportNum; j++) {
+		int x = touchBack.report[j].x;
+		int y = touchBack.report[j].y;
+		if (x > 960) {
+			if (y > 544) cur_raw[R3_BTN] = 1;
+			else { cur_raw[R2_BTN] = 1; cur_raw[R1_BTN] = 1; }
+		} else {
+			if (y > 544) cur_raw[L3_BTN] = 1;
+			else { cur_raw[L2_BTN] = 1; cur_raw[L1_BTN] = 1; }
+		}
+	}
+
+	// 2. Step-stable edge latching for GML step
+	for (int b = 0; b < NUM_BUTTONS; b++) {
+		bool cur_down = (cur_raw[b] != 0);
+		step_pressed[0][b]  = (cur_down && !prev_down[0][b]);
+		step_held[0][b]     = cur_down;
+		step_released[0][b] = (!cur_down && prev_down[0][b]);
+		prev_down[0][b]     = cur_down;
+		yoyo_gamepads[0].buttons[b] = cur_down ? 1.0 : 0.0;
+	}
+
+	// 3. Analog sticks
+	double lx = (double)((int)pad.lx - 128) / 128.0;
+	double ly = (double)((int)pad.ly - 128) / 128.0;
+	double rx = (double)((int)pad.rx - 128) / 128.0;
+	double ry = (double)((int)pad.ry - 128) / 128.0;
+	yoyo_gamepads[0].axis[0] = (fabs(lx) < 0.12) ? 0.0 : lx;
+	yoyo_gamepads[0].axis[1] = (fabs(ly) < 0.12) ? 0.0 : ly;
+	yoyo_gamepads[0].axis[2] = (fabs(rx) < 0.12) ? 0.0 : rx;
+	yoyo_gamepads[0].axis[3] = (fabs(ry) < 0.12) ? 0.0 : ry;
+
+	// 4. Front touch screen for menus
+	SceTouchData touchFront;
+	sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touchFront, 1);
+	if (touchFront.reportNum > 0) {
+		float tx = (float)touchFront.report[0].x * (float)SCREEN_W / 1920.0f;
+		float ty = (float)touchFront.report[0].y * (float)SCREEN_H / 1088.0f;
+		*g_MousePosX = (int)tx;
+		*g_MousePosY = (int)ty;
+		*g_DoMouseButton = 1;
+		touch_pressed = (touch_active == 0) ? 1 : 0;
+		touch_active = 1;
+	} else {
+		if (touch_active) {
+			*g_DoMouseButton = 0;
+			touch_active = 0;
+			touch_pressed = 0;
+		}
+	}
+
+	// 5. Gamepad discovery event dispatch during startup (first 240 steps / ~4s)
+	if (CreateDsMap && CreateAsynEventWithDSMap && gh_step_tick_count <= 240) {
+		int dsMap = CreateDsMap(2, "event_type", 0, 0, "gamepad discovered", "pad_index", 0.0, 0);
+		CreateAsynEventWithDSMap(dsMap, 0x4B);
+	}
 }
 
 void patch_gamepad(const char *game_name) {
@@ -840,7 +613,9 @@ void patch_gamepad(const char *game_name) {
 	CreateDsMap = (void *)so_symbol(&yoyoloader_mod, "_Z11CreateDsMapiz");
 	CreateAsynEventWithDSMap = (void *)so_symbol(&yoyoloader_mod, "_Z24CreateAsynEventWithDSMapii");
 	Java_com_yoyogames_runner_RunnerJNILib_KeyEvent = (void *)so_symbol(&yoyoloader_mod, "Java_com_yoyogames_runner_RunnerJNILib_KeyEvent");
-	GamePadCheck(1);
+
+	yoyo_gamepads[0].is_available = 1;
+	yoyo_gamepads[0].deadzone = 0.12;
 	has_click_emulation = 1;
 	
 	Function_Add("gamepad_is_supported", (intptr_t)gamepad_is_supported, 0, 1);
@@ -885,39 +660,4 @@ void patch_gamepad(const char *game_name) {
 	Function_Add("mouse_check_button", (intptr_t)gml_mouse_check_button, 1, 0);
 	Function_Add("mouse_check_button_pressed", (intptr_t)gml_mouse_check_button_pressed, 1, 0);
 	Function_Add("mouse_check_button_released", (intptr_t)gml_mouse_check_button_released, 1, 0);
-	
-#ifdef STANDALONE_MODE
-	FILE *f = fopen("app0:keys.ini", "r");
-#else
-	char fname[512];
-	sprintf(fname, "ux0:data/gms/%s/keys.ini", game_name);
-	FILE *f = fopen(fname, "r");
-#endif
-	if (f) {
-		debugPrintf("Keyboard mapping file found!\n");
-		sceClibMemset(keyboard_mapping, UNK_BTN, NUM_BUTTONS);
-		char buffer[30], buffer2[30];
-		while (EOF != fscanf(f, "%[^=]=%[^\n]\n", buffer, buffer2)) {
-			if (strcmp("CROSS", buffer) == 0) map_key(CROSS_BTN, buffer2);
-			else if (strcmp("CIRCLE", buffer) == 0) map_key(CIRCLE_BTN, buffer2);
-			else if (strcmp("SQUARE", buffer) == 0) map_key(SQUARE_BTN, buffer2);
-			else if (strcmp("TRIANGLE", buffer) == 0) map_key(TRIANGLE_BTN, buffer2);
-			else if (strcmp("UP", buffer) == 0) map_key(UP_BTN, buffer2);
-			else if (strcmp("DOWN", buffer) == 0) map_key(DOWN_BTN, buffer2);
-			else if (strcmp("LEFT", buffer) == 0) map_key(LEFT_BTN, buffer2);
-			else if (strcmp("RIGHT", buffer) == 0) map_key(RIGHT_BTN, buffer2);
-			else if (strcmp("SELECT", buffer) == 0) map_key(SELECT_BTN, buffer2);
-			else if (strcmp("START", buffer) == 0) map_key(START_BTN, buffer2);
-			else if (strcmp("L1", buffer) == 0) map_key(L1_BTN, buffer2);
-			else if (strcmp("R1", buffer) == 0) map_key(R1_BTN, buffer2);
-			else if (strcmp("L2", buffer) == 0) map_key(L2_BTN, buffer2);
-			else if (strcmp("R2", buffer) == 0) map_key(R2_BTN, buffer2);
-			else if (strcmp("L3", buffer) == 0) map_key(L3_BTN, buffer2);
-			else if (strcmp("R3", buffer) == 0) map_key(R3_BTN, buffer2);
-			else if (strcmp("RANALOG", buffer) == 0) map_analog(RIGHT_ANALOG, buffer2);
-			else if (strcmp("LANALOG", buffer) == 0) map_analog(LEFT_ANALOG, buffer2);
-		}
-		fclose(f);
-		has_kb_mapping = 1;
-	}
 }
