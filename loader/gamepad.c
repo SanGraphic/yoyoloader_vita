@@ -512,39 +512,35 @@ void GamePadUpdate() {
 				}
 			}
 		}
-		
 		int leftClickState = 0;
 		int rightClickState = 0;
 		if (has_kb_mapping) {
 			for (int j = 0; j < NUM_BUTTONS; j++) {
+				uint8_t cur = new_states[j];
+				if (cur && !raw_btn_down[i][j]) {
+					pending_press[i][j] = 1;
+				}
+				if (!cur && raw_btn_down[i][j]) {
+					pending_release[i][j] = 1;
+				}
+				raw_btn_down[i][j] = cur;
+				yoyo_gamepads[i].buttons[j] = cur ? 1.0f : 0.0f;
+
 				if (keyboard_mapping[j] != UNK_BTN) {
-					if (analog_as_keys && j >= UP_BTN && j <= RIGHT_BTN) {
-						if ((j == LEFT_BTN && pad.lx < 127 - ANALOG_DEADZONE) ||
-							(j == RIGHT_BTN && pad.lx > 127 + ANALOG_DEADZONE) ||
-							(j == UP_BTN && pad.ly < 127 - ANALOG_DEADZONE) ||
-							(j == DOWN_BTN && pad.ly > 127 + ANALOG_DEADZONE)) {
-							is_key_pressed[j] = 1;
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, !is_key_pressed[j], keyboard_mapping[j], keyboard_mapping[j], 0x101);
-						} else if (is_key_pressed[j] || new_states[j]) {
-							is_key_pressed[j] = new_states[j];
-							if (keyboard_mapping[j] == 0x01) // Left Mouse Click
-								leftClickState = is_key_pressed[j];
-							else if (keyboard_mapping[j] == 0x02) // Right Mouse Click
-								rightClickState = is_key_pressed[j];
-							else
-								Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, !is_key_pressed[j], keyboard_mapping[j], keyboard_mapping[j], 0x101);
+					if (is_key_pressed[j] != cur) {
+						is_key_pressed[j] = cur;
+						if (keyboard_mapping[j] == 0x01) {
+							leftClickState = cur;
+						} else if (keyboard_mapping[j] == 0x02) {
+							rightClickState = cur;
+						} else {
+							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, !cur, keyboard_mapping[j], keyboard_mapping[j], 0x101);
 						}
-					} else if (is_key_pressed[j] || new_states[j]) {
-						is_key_pressed[j] = new_states[j];
-						if (keyboard_mapping[j] == 0x01) // Left Mouse Click
-							leftClickState = is_key_pressed[j];
-						else if (keyboard_mapping[j] == 0x02) // Right Mouse Click
-							rightClickState = is_key_pressed[j];
-						else
-							Java_com_yoyogames_runner_RunnerJNILib_KeyEvent(fake_env, 0, !is_key_pressed[j], keyboard_mapping[j], keyboard_mapping[j], 0x101);
 					}
-				} else {
-					yoyo_gamepads[i].buttons[j] = (double)update_button(new_states[j], (int)yoyo_gamepads[i].buttons[j]);
+					if (cur) {
+						if (keyboard_mapping[j] == 0x01) leftClickState = 1;
+						if (keyboard_mapping[j] == 0x02) rightClickState = 1;
+					}
 				}
 			}
 		} else {
